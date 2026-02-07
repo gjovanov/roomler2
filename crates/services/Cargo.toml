@@ -1,0 +1,32 @@
+[package]
+name = "roomler2-services"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+roomler2-config = { path = "../config" }
+roomler2-db = { path = "../db" }
+mongodb.workspace = true
+bson.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+argon2.workspace = true
+password-hash.workspace = true
+jsonwebtoken.workspace = true
+reqwest.workspace = true
+dashmap.workspace = true
+rust_xlsxwriter.workspace = true
+genpdf.workspace = true
+tempfile.workspace = true
+redis.workspace = true
+rand.workspace = true
+base64.workspace = true
+futures.workspace = true
+validator.workspace = true
+async-trait.workspace = true

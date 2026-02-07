@@ -1,0 +1,43 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import { api } from '@/api/client'
+
+interface Tenant {
+  id: string
+  name: string
+  slug: string
+  description?: string
+  icon?: string
+}
+
+export const useTenantStore = defineStore('tenant', () => {
+  const tenants = ref<Tenant[]>([])
+  const current = ref<Tenant | null>(null)
+  const loading = ref(false)
+
+  async function fetchTenants() {
+    loading.value = true
+    try {
+      const data = await api.get<{ items: Tenant[] }>('/tenant')
+      tenants.value = data.items
+      if (!current.value && tenants.value.length > 0) {
+        current.value = tenants.value[0]!
+      }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function createTenant(name: string, slug: string) {
+    const tenant = await api.post<Tenant>('/tenant', { name, slug })
+    tenants.value.push(tenant)
+    current.value = tenant
+    return tenant
+  }
+
+  function setCurrent(tenant: Tenant) {
+    current.value = tenant
+  }
+
+  return { tenants, current, loading, fetchTenants, createTenant, setCurrent }
+})

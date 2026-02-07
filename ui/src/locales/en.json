@@ -1,0 +1,69 @@
+{
+  "app": {
+    "name": "Roomler"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password",
+    "username": "Username",
+    "displayName": "Display Name",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "channels": "Channels",
+    "explore": "Explore",
+    "files": "Files",
+    "admin": "Admin",
+    "settings": "Settings"
+  },
+  "channel": {
+    "create": "Create Channel",
+    "name": "Channel Name",
+    "type": "Channel Type",
+    "private": "Private",
+    "join": "Join",
+    "leave": "Leave",
+    "members": "Members",
+    "noMessages": "No messages yet. Start the conversation!"
+  },
+  "message": {
+    "placeholder": "Type a message...",
+    "edit": "Edit",
+    "delete": "Delete",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "reply": "Reply",
+    "thread": "Thread"
+  },
+  "conference": {
+    "start": "Start Meeting",
+    "join": "Join Meeting",
+    "leave": "Leave",
+    "end": "End Meeting",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "videoOn": "Camera On",
+    "videoOff": "Camera Off",
+    "shareScreen": "Share Screen",
+    "participants": "Participants"
+  },
+  "files": {
+    "upload": "Upload",
+    "download": "Download",
+    "delete": "Delete",
+    "noFiles": "No files uploaded yet."
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "search": "Search",
+    "loading": "Loading..."
+  }
+}

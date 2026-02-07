@@ -1,0 +1,29 @@
+[package]
+name = "roomler2-tests"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "roomler2_tests"
+path = "src/lib.rs"
+
+[dependencies]
+roomler2-config = { path = "../config" }
+roomler2-db = { path = "../db" }
+roomler2-services = { path = "../services" }
+roomler2-api = { path = "../api" }
+tokio.workspace = true
+mongodb.workspace = true
+bson.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+reqwest.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+axum.workspace = true
+tower.workspace = true
+
+[dev-dependencies]
+tokio-test = "0.4"

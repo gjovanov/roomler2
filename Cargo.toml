@@ -1,0 +1,88 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/config",
+    "crates/db",
+    "crates/services",
+    "crates/api",
+    "crates/tests",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Goran Jovanov <gjovanov@gmail.com>"]
+license = "MIT"
+
+[workspace.dependencies]
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["ws", "multipart"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# MongoDB
+mongodb = "3.2"
+bson = { version = "2", features = ["chrono-0_4", "serde_with"] }
+
+# Auth
+jsonwebtoken = { version = "9", features = ["use_pem"] }
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["getrandom"] }
+
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+
+# Config
+config = "0.14"
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "multipart", "cookies"] }
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Concurrency
+dashmap = "6"
+
+# Background tasks
+tokio-cron-scheduler = "0.13"
+
+# Export
+rust_xlsxwriter = { version = "0.82", features = ["zlib"] }
+genpdf = "0.2"
+
+# File handling
+tempfile = "3"
+
+# Redis
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+
+# mediasoup
+# mediasoup = "0.20"  # TODO: enable when ready for Phase 5
+
+# Testing
+tokio-test = "0.4"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Misc
+rand = "0.9"
+base64 = "0.22"
+futures = "0.3"
+async-trait = "0.1"

@@ -1,0 +1,290 @@
+use crate::fixtures::test_app::TestApp;
+use serde_json::Value;
+
+#[tokio::test]
+async fn register_creates_user_and_returns_tokens() {
+    let app = TestApp::spawn().await;
+
+    let resp = app
+        .client
+        .post(app.url("/api/auth/register"))
+        .json(&serde_json::json!({
+            "email": "alice@test.com",
+            "username": "alice",
+            "display_name": "Alice",
+            "password": "Password123!",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 201);
+
+    let json: Value = resp.json().await.unwrap();
+    assert!(json["access_token"].is_string());
+    assert!(json["refresh_token"].is_string());
+    assert_eq!(json["user"]["email"], "alice@test.com");
+    assert_eq!(json["user"]["username"], "alice");
+    assert_eq!(json["user"]["display_name"], "Alice");
+}
+
+#[tokio::test]
+async fn register_with_tenant_creates_tenant() {
+    let app = TestApp::spawn().await;
+
+    let resp = app
+        .client
+        .post(app.url("/api/auth/register"))
+        .json(&serde_json::json!({
+            "email": "bob@test.com",
+            "username": "bob",
+            "display_name": "Bob",
+            "password": "Password123!",
+            "tenant_name": "Bob's Org",
+            "tenant_slug": "bobs-org",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 201);
+    let auth: Value = resp.json().await.unwrap();
+    let token = auth["access_token"].as_str().unwrap();
+
+    // Verify tenant was created
+    let resp = app.auth_get("/api/tenant", token).send().await.unwrap();
+    let tenants: Vec<Value> = resp.json().await.unwrap();
+    assert_eq!(tenants.len(), 1);
+    assert_eq!(tenants[0]["slug"], "bobs-org");
+    assert_eq!(tenants[0]["name"], "Bob's Org");
+}
+
+#[tokio::test]
+async fn register_duplicate_email_fails() {
+    let app = TestApp::spawn().await;
+
+    let body = serde_json::json!({
+        "email": "dup@test.com",
+        "username": "user1",
+        "display_name": "User 1",
+        "password": "Password123!",
+    });
+
+    let resp = app
+        .client
+        .post(app.url("/api/auth/register"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 201);
+
+    // Try same email, different username
+    let body2 = serde_json::json!({
+        "email": "dup@test.com",
+        "username": "user2",
+        "display_name": "User 2",
+        "password": "Password123!",
+    });
+
+    let resp = app
+        .client
+        .post(app.url("/api/auth/register"))
+        .json(&body2)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 409); // Conflict
+}
+
+#[tokio::test]
+async fn login_with_valid_credentials_succeeds() {
+    let app = TestApp::spawn().await;
+
+    // Register first
+    app.client
+        .post(app.url("/api/auth/register"))
+        .json(&serde_json::json!({
+            "email": "login@test.com",
+            "username": "loginuser",
+            "display_name": "Login User",
+            "password": "Password123!",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Login
+    let resp = app
+        .client
+        .post(app.url("/api/auth/login"))
+        .json(&serde_json::json!({
+            "email": "login@test.com",
+            "password": "Password123!",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let json: Value = resp.json().await.unwrap();
+    assert!(json["access_token"].is_string());
+    assert_eq!(json["user"]["email"], "login@test.com");
+}
+
+#[tokio::test]
+async fn login_with_wrong_password_fails() {
+    let app = TestApp::spawn().await;
+
+    // Register
+    app.client
+        .post(app.url("/api/auth/register"))
+        .json(&serde_json::json!({
+            "email": "wrongpw@test.com",
+            "username": "wrongpw",
+            "display_name": "Wrong PW",
+            "password": "Correct123!",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Login with wrong password
+    let resp = app
+        .client
+        .post(app.url("/api/auth/login"))
+        .json(&serde_json::json!({
+            "email": "wrongpw@test.com",
+            "password": "WrongPassword!",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn login_with_nonexistent_email_fails() {
+    let app = TestApp::spawn().await;
+
+    let resp = app
+        .client
+        .post(app.url("/api/auth/login"))
+        .json(&serde_json::json!({
+            "email": "nobody@test.com",
+            "password": "Password123!",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn me_endpoint_returns_current_user() {
+    let app = TestApp::spawn().await;
+
+    let user = app
+        .register_user("me@test.com", "meuser", "Me User", "Password123!", None, None)
+        .await;
+
+    let resp = app
+        .auth_get("/api/auth/me", &user.access_token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let json: Value = resp.json().await.unwrap();
+    assert_eq!(json["email"], "me@test.com");
+    assert_eq!(json["username"], "meuser");
+}
+
+#[tokio::test]
+async fn me_endpoint_rejects_no_token() {
+    let app = TestApp::spawn().await;
+
+    let resp = app
+        .client
+        .get(app.url("/api/auth/me"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn me_endpoint_rejects_invalid_token() {
+    let app = TestApp::spawn().await;
+
+    let resp = app
+        .client
+        .get(app.url("/api/auth/me"))
+        .header("Authorization", "Bearer invalid-token-here")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn refresh_token_generates_new_access_token() {
+    let app = TestApp::spawn().await;
+
+    let user = app
+        .register_user(
+            "refresh@test.com",
+            "refreshuser",
+            "Refresh User",
+            "Password123!",
+            None,
+            None,
+        )
+        .await;
+
+    let resp = app
+        .client
+        .post(app.url("/api/auth/refresh"))
+        .json(&serde_json::json!({
+            "refresh_token": user.refresh_token,
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let json: Value = resp.json().await.unwrap();
+    assert!(json["access_token"].is_string());
+    // The new access token should be different
+    let new_token = json["access_token"].as_str().unwrap();
+    // Can use the new token
+    let resp = app
+        .auth_get("/api/auth/me", new_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn health_check_returns_ok() {
+    let app = TestApp::spawn().await;
+
+    let resp = app
+        .client
+        .get(app.url("/health"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 200);
+    let json: Value = resp.json().await.unwrap();
+    assert_eq!(json["status"], "ok");
+}
