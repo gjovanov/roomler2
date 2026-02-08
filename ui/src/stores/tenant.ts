@@ -18,8 +18,7 @@ export const useTenantStore = defineStore('tenant', () => {
   async function fetchTenants() {
     loading.value = true
     try {
-      const data = await api.get<{ items: Tenant[] }>('/tenant')
-      tenants.value = data.items
+      tenants.value = await api.get<Tenant[]>('/tenant')
       if (!current.value && tenants.value.length > 0) {
         current.value = tenants.value[0]!
       }

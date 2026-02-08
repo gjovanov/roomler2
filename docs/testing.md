@@ -15,7 +15,7 @@ Located in `crates/tests/src/`. These tests spin up the full Axum server and int
 | `channel_crud_tests.rs` | Channel create, update, delete |
 | `message_tests.rs` | Send, edit, delete, list, pin, threads |
 | `reaction_tests.rs` | Add and remove reactions |
-| `conference_tests.rs` | Create, start, join, leave, end conferences |
+| `conference_tests.rs` | Create, start, join, leave, end conferences + mediasoup signaling (WS media:join, transport creation, peer_left broadcast) |
 | `recording_tests.rs` | Create, list, delete recordings |
 | `transcription_tests.rs` | Create, list, get transcriptions |
 | `file_tests.rs` | Upload, get, download, delete, list files |
@@ -60,7 +60,8 @@ Located in `ui/e2e/`. Playwright tests that run against the full stack (backend 
 | `dashboard.spec.ts` | Dashboard rendering, tenant cards |
 | `channels.spec.ts` | Channel creation, browsing |
 | `chat.spec.ts` | Message sending, display |
-| `conference.spec.ts` | Conference view, join button |
+| `conference.spec.ts` | Conference view, join/leave, local video, mute/camera toggles |
+| `websocket.spec.ts` | WebSocket connection, typing indicators |
 | `files.spec.ts` | File upload, browsing |
 
 ### Test Helpers
@@ -109,3 +110,110 @@ Integration Tests (Rust)              E2E Tests (Playwright)
 ```
 
 Integration tests use an isolated test database and server instance per test. E2E tests run against the development stack.
+
+## Conference Stress Test
+
+A Node.js stress test script that measures the maximum number of participants that can join a single mediasoup video conference. Located at `stress-test-conference.mjs`.
+
+### What It Tests
+
+Each simulated participant goes through the full signaling lifecycle:
+
+1. **Register** user via REST API
+2. **Add as tenant member** via direct MongoDB insert
+3. **REST join** conference (adds participant to DB)
+4. **WebSocket connect** and authenticate
+5. **`media:join`** signaling — receives `router_capabilities` + `transport_created`
+6. **`media:connect_transport`** — connects both send and recv transports with DTLS parameters
+
+Participants are added in configurable batches (default: 10 per batch) with latency measured at each phase. The test stops when the failure rate exceeds 30% of a batch or the participant limit is reached.
+
+### Running
+
+```bash
+# Prerequisites: API server running on :5001, MongoDB on :27017
+npm install ws mongodb   # one-time, from project root
+
+# Run with defaults (500 max, batches of 10)
+node stress-test-conference.mjs
+
+# Results are written to stress-test-results.txt
+```
+
+### Configuration
+
+Environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_URL` | `http://localhost:5001` | API base URL |
+| `WS_URL` | `ws://localhost:5001/ws` | WebSocket base URL |
+| `MONGO_URL` | `mongodb://localhost:27017` | MongoDB connection |
+| `DB_NAME` | `roomler2` | Database name |
+| `RESULTS_FILE` | `stress-test-results.txt` | Output file path |
+
+Script constants (edit in file):
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `BATCH_SIZE` | 10 | Participants added per batch |
+| `MAX_PARTICIPANTS` | 500 | Stop after this many join |
+| `SIGNALING_TIMEOUT_MS` | 15000 | Timeout for WS responses |
+| `FAILURE_RATE_THRESHOLD` | 0.3 | Stop if >30% of batch fails |
+| `SETTLE_MS` | 500 | Pause between batches |
+
+### Metrics Collected
+
+Per batch:
+- **Avg / P50 / P95 join latency** (full lifecycle: register → transport connect)
+- **API process RSS** (memory)
+- **System load average**
+- **Success / failure count**
+
+Final report:
+- Max participants joined
+- Memory growth (RSS start → end)
+- Latency trend table
+- Stop reason and failure details
+
+### Benchmark Results
+
+#### Hardware: AMD Ryzen 9 9955HX3D (WSL2)
+
+| Spec | Value |
+|------|-------|
+| CPU | AMD Ryzen 9 9955HX3D, 16 cores / 32 threads |
+| RAM | 47 GB |
+| OS | Linux 6.6.87 (WSL2) |
+| Build | Debug (unoptimized) |
+| mediasoup workers | 2 |
+
+#### Results: 500 Participants, 0 Failures
+
+```
+Participants | Avg Latency | P95 Latency | API RSS
+─────────────┼─────────────┼─────────────┼────────
+          10 |      487ms  |      512ms  |  746MB
+         100 |      473ms  |      509ms  |  832MB
+         200 |      492ms  |      557ms  |  902MB
+         300 |      469ms  |      490ms  |  950MB
+         400 |      478ms  |      533ms  |  945MB
+         500 |      469ms  |      490ms  | 1085MB
+```
+
+| Metric | Value |
+|--------|-------|
+| Max participants (no failures) | **500** (test limit reached) |
+| Avg join latency | **~480ms** (flat, no degradation) |
+| P95 join latency | **~530ms** (stable) |
+| Memory per participant | **~0.84 MB** |
+| API RSS growth | 667MB → 1085MB (+418MB) |
+| System load at 500 | 2.51 (light) |
+| System memory at 500 | 9.5GB / 47GB (20%) |
+
+Key observations:
+- **No latency degradation** from participant 1 to 500 — join time stayed flat at ~480ms
+- **Linear memory growth** at ~0.84MB per participant (2 WebRTC transports each)
+- **No failure point found** — the system had 80% memory headroom at 500 participants
+- **Projected capacity** on this hardware: ~2000-4000 participants based on memory growth rate (with release build and more mediasoup workers, likely higher)
+- The ~480ms latency is dominated by user registration + MongoDB inserts, not mediasoup signaling

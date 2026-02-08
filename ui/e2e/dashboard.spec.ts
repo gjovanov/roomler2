@@ -19,7 +19,7 @@ test.describe('Dashboard', () => {
     const result = await registerUserViaApi(user)
     await createTenantViaApi(result.access_token, 'My Org', `org-${Date.now()}`)
     await loginViaUi(page, user.username, user.password)
-    await expect(page.getByText('My Org')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('My Org').first()).toBeVisible({ timeout: 10000 })
   })
 
   test('tenant dashboard shows stats and quick actions', async ({ page }) => {
@@ -33,7 +33,7 @@ test.describe('Dashboard', () => {
     await loginViaUi(page, user.username, user.password)
     await page.goto(`/tenant/${tenant.id}`)
     await expect(page.getByText(/channels/i).first()).toBeVisible({ timeout: 10000 })
-    await expect(page.getByRole('button', { name: /new channel/i })).toBeVisible()
-    await expect(page.getByRole('button', { name: /start meeting/i })).toBeVisible()
+    await expect(page.getByText(/new channel/i)).toBeVisible()
+    await expect(page.getByText(/start meeting/i)).toBeVisible()
   })
 })

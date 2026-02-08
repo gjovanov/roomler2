@@ -32,7 +32,9 @@ pub struct UserResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
+    #[serde(default)]
     pub username: Option<String>,
+    #[serde(default)]
     pub email: Option<String>,
     pub password: String,
 }

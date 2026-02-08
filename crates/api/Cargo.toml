@@ -35,3 +35,4 @@ redis.workspace = true
 futures.workspace = true
 validator.workspace = true
 tempfile.workspace = true
+mediasoup.workspace = true

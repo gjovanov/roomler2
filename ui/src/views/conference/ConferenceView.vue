@@ -17,70 +17,67 @@
 
         <!-- Video grid -->
         <div class="flex-grow-1 d-flex align-center justify-center bg-black">
-          <v-row v-if="conferenceStore.current" class="pa-4" justify="center">
-            <!-- Local video -->
-            <v-col cols="12" sm="6" md="4" lg="3">
-              <v-card class="video-tile" color="grey-darken-3">
-                <video
-                  ref="localVideoRef"
-                  autoplay
-                  muted
-                  playsinline
-                  class="w-100"
-                  style="aspect-ratio: 16/9; object-fit: cover"
-                />
-                <v-card-text class="pa-2 text-caption text-center">
-                  You {{ conferenceStore.isMuted ? '(muted)' : '' }}
-                </v-card-text>
-              </v-card>
-            </v-col>
-
-            <!-- Remote participants placeholder -->
-            <v-col
-              v-for="p in conferenceStore.participants"
-              :key="p.id"
-              cols="12" sm="6" md="4" lg="3"
-            >
-              <v-card class="video-tile" color="grey-darken-3">
-                <div
-                  class="d-flex align-center justify-center"
-                  style="aspect-ratio: 16/9"
-                >
-                  <v-avatar size="64" color="primary">
-                    <span class="text-h5">{{ p.display_name.charAt(0) }}</span>
-                  </v-avatar>
-                </div>
-                <v-card-text class="pa-2 text-caption text-center">
-                  {{ p.display_name }}
-                  {{ p.is_muted ? '(muted)' : '' }}
-                </v-card-text>
-              </v-card>
-            </v-col>
-          </v-row>
-
-          <div v-else class="text-center text-white">
+          <!-- Pre-join state -->
+          <div v-if="!joined" class="text-center text-white">
             <v-icon size="64" class="mb-4">mdi-video</v-icon>
             <div class="text-h5">Ready to join?</div>
-            <v-btn color="primary" size="large" class="mt-4" @click="handleJoin">
+            <v-btn
+              color="primary"
+              size="large"
+              class="mt-4"
+              :loading="joining"
+              @click="handleJoin"
+            >
               {{ $t('conference.join') }}
             </v-btn>
           </div>
+
+          <!-- Active conference: video grid -->
+          <v-row v-else class="pa-4 video-grid" justify="center" align="center">
+            <!-- Local video -->
+            <v-col cols="12" sm="6" md="4" lg="3">
+              <VideoTile
+                :stream="mediasoup.localStream.value"
+                display-name="You"
+                :is-muted="mediasoup.isMuted.value"
+                :is-local="true"
+              />
+            </v-col>
+
+            <!-- Remote participants -->
+            <v-col
+              v-for="[userId, remote] in mediasoup.remoteStreams"
+              :key="userId"
+              cols="12" sm="6" md="4" lg="3"
+            >
+              <VideoTile
+                :stream="remote.stream"
+                :display-name="getDisplayName(userId)"
+                :is-muted="false"
+                :is-local="false"
+              />
+            </v-col>
+          </v-row>
         </div>
 
         <!-- Controls bar -->
-        <v-toolbar v-if="conferenceStore.current" density="compact" color="grey-darken-4">
+        <v-toolbar v-if="joined" density="compact" color="grey-darken-4">
           <v-spacer />
           <v-btn
-            :icon="conferenceStore.isMuted ? 'mdi-microphone-off' : 'mdi-microphone'"
-            :color="conferenceStore.isMuted ? 'error' : undefined"
-            @click="conferenceStore.toggleMute()"
+            :icon="mediasoup.isMuted.value ? 'mdi-microphone-off' : 'mdi-microphone'"
+            :color="mediasoup.isMuted.value ? 'error' : undefined"
+            @click="mediasoup.toggleMute()"
           />
           <v-btn
-            :icon="conferenceStore.isVideoOn ? 'mdi-video' : 'mdi-video-off'"
-            :color="!conferenceStore.isVideoOn ? 'error' : undefined"
-            @click="conferenceStore.toggleVideo()"
+            :icon="mediasoup.isVideoOn.value ? 'mdi-video' : 'mdi-video-off'"
+            :color="!mediasoup.isVideoOn.value ? 'error' : undefined"
+            @click="mediasoup.toggleVideo()"
           />
-          <v-btn icon="mdi-monitor-share" />
+          <v-btn
+            :icon="mediasoup.isScreenSharing.value ? 'mdi-monitor-off' : 'mdi-monitor-share'"
+            :color="mediasoup.isScreenSharing.value ? 'success' : undefined"
+            @click="handleScreenShare"
+          />
           <v-btn icon="mdi-phone-hangup" color="error" @click="handleLeave" />
           <v-spacer />
         </v-toolbar>
@@ -90,17 +87,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConferenceStore } from '@/stores/conference'
+import { useMediasoup } from '@/composables/useMediasoup'
+import VideoTile from '@/components/conference/VideoTile.vue'
 
 const route = useRoute()
 const router = useRouter()
 const conferenceStore = useConferenceStore()
+const mediasoup = useMediasoup()
 
 const tenantId = computed(() => route.params.tenantId as string)
 const conferenceId = computed(() => route.params.conferenceId as string)
-const localVideoRef = ref<HTMLVideoElement | null>(null)
+const joined = ref(false)
+const joining = ref(false)
 
 const statusColor = computed(() => {
   switch (conferenceStore.current?.status) {
@@ -111,25 +112,70 @@ const statusColor = computed(() => {
   }
 })
 
+function getDisplayName(userId: string): string {
+  const participant = conferenceStore.participants.find((p) => p.user_id === userId)
+  return participant?.display_name || userId.slice(0, 8)
+}
+
 async function handleJoin() {
-  await conferenceStore.joinConference(tenantId.value, conferenceId.value)
-  const stream = await conferenceStore.startLocalStream()
-  if (localVideoRef.value) {
-    localVideoRef.value.srcObject = stream
+  joining.value = true
+  try {
+    // Start conference if not already in progress (creates mediasoup room)
+    if (conferenceStore.current?.status !== 'InProgress') {
+      await conferenceStore.startConference(tenantId.value, conferenceId.value)
+    }
+
+    // REST join (adds participant to DB)
+    await conferenceStore.joinConference(tenantId.value, conferenceId.value)
+
+    // Fetch conference details
+    await conferenceStore.fetchConference(tenantId.value, conferenceId.value)
+
+    // mediasoup signaling join (loads device, connects transports)
+    await mediasoup.joinRoom(conferenceId.value)
+
+    // Produce local audio + video
+    await mediasoup.produceLocalMedia()
+
+    // Fetch participants for display names
+    await conferenceStore.fetchParticipants(tenantId.value, conferenceId.value)
+
+    joined.value = true
+  } catch (err) {
+    console.error('Failed to join conference:', err)
+  } finally {
+    joining.value = false
   }
 }
 
 async function handleLeave() {
+  mediasoup.leaveRoom()
   await conferenceStore.leaveConference(tenantId.value, conferenceId.value)
+  joined.value = false
   router.push(`/tenant/${tenantId.value}`)
 }
 
-watch(
-  () => conferenceStore.localStream,
-  (stream) => {
-    if (localVideoRef.value && stream) {
-      localVideoRef.value.srcObject = stream
-    }
-  },
-)
+function handleScreenShare() {
+  if (mediasoup.isScreenSharing.value) {
+    mediasoup.stopScreenShare()
+  } else {
+    mediasoup.startScreenShare()
+  }
+}
+
+onMounted(async () => {
+  // Load conference info on mount
+  try {
+    await conferenceStore.fetchConference(tenantId.value, conferenceId.value)
+  } catch {
+    // Conference not found
+  }
+})
 </script>
+
+<style scoped>
+.video-grid {
+  max-height: 100%;
+  overflow-y: auto;
+}
+</style>

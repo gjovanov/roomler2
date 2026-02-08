@@ -95,9 +95,16 @@ pub async fn start(
     }
 
     state.conferences.start(confid).await?;
-    state.room_manager.create_room(confid);
+    let rtp_capabilities = state
+        .room_manager
+        .create_room(confid)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to create media room: {}", e)))?;
 
-    Ok(Json(serde_json::json!({ "started": true })))
+    Ok(Json(serde_json::json!({
+        "started": true,
+        "rtp_capabilities": rtp_capabilities,
+    })))
 }
 
 pub async fn join(
@@ -121,6 +128,7 @@ pub async fn join(
         .join_participant(tid, confid, auth.user_id, user.display_name, "web".to_string())
         .await?;
 
+    // Transport creation is handled via WS media:join signaling
     Ok(Json(serde_json::json!({
         "participant_id": participant.id.unwrap().to_hex(),
         "joined": true,
@@ -143,6 +151,15 @@ pub async fn end(
 
     state.conferences.end(confid).await?;
     state.room_manager.remove_room(&confid);
+    // Broadcast peer_left to all remaining WS connections in the room
+    let remaining = state.room_manager.get_participant_user_ids(&confid);
+    if !remaining.is_empty() {
+        let event = serde_json::json!({
+            "type": "media:room_closed",
+            "data": { "conference_id": confid.to_hex() }
+        });
+        crate::ws::dispatcher::broadcast(&state.ws_storage, &remaining, &event).await;
+    }
 
     Ok(Json(serde_json::json!({ "ended": true })))
 }
@@ -177,6 +194,22 @@ pub async fn leave(
 
     if !state.tenants.is_member(tid, auth.user_id).await? {
         return Err(ApiError::Forbidden("Not a member".to_string()));
+    }
+
+    // Clean up media before DB leave
+    state.room_manager.close_participant(&confid, &auth.user_id);
+
+    // Broadcast peer_left to remaining participants
+    let remaining = state.room_manager.get_participant_user_ids(&confid);
+    if !remaining.is_empty() {
+        let event = serde_json::json!({
+            "type": "media:peer_left",
+            "data": {
+                "conference_id": confid.to_hex(),
+                "user_id": auth.user_id.to_hex(),
+            }
+        });
+        crate::ws::dispatcher::broadcast(&state.ws_storage, &remaining, &event).await;
     }
 
     state.conferences.leave_participant(confid, auth.user_id).await?;

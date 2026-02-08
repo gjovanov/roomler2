@@ -5,11 +5,21 @@ import { useTaskStore } from './tasks'
 
 type WsStatus = 'disconnected' | 'connecting' | 'connected'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type MediaMessageHandler = (data: any) => void
+
 export const useWsStore = defineStore('ws', () => {
   const status = ref<WsStatus>('disconnected')
   let socket: WebSocket | null = null
   let pingInterval: ReturnType<typeof setInterval> | null = null
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+
+  // Pending one-shot message waiters (resolve on first matching message)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pendingWaiters = new Map<string, { resolve: (data: any) => void; reject: (err: Error) => void }>()
+
+  // Persistent media message handlers
+  const mediaHandlers = new Map<string, MediaMessageHandler>()
 
   function connect(token: string) {
     if (socket && socket.readyState <= WebSocket.OPEN) return
@@ -51,6 +61,21 @@ export const useWsStore = defineStore('ws', () => {
     const messageStore = useMessageStore()
     const taskStore = useTaskStore()
 
+    // Check pending waiters first
+    const waiter = pendingWaiters.get(msg.type)
+    if (waiter) {
+      pendingWaiters.delete(msg.type)
+      waiter.resolve(msg.data)
+      return
+    }
+
+    // Check persistent media handlers
+    const handler = mediaHandlers.get(msg.type)
+    if (handler) {
+      handler(msg.data)
+      return
+    }
+
     switch (msg.type) {
       case 'message:create':
         messageStore.addMessageFromWs(msg.data as never)
@@ -71,6 +96,38 @@ export const useWsStore = defineStore('ws', () => {
     send('typing:start', { channel_id: channelId })
   }
 
+  /** Wait for a specific message type (one-shot). Returns the data payload. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function waitForMessage(type: string, timeoutMs = 10000): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingWaiters.delete(type)
+        reject(new Error(`Timeout waiting for ${type}`))
+      }, timeoutMs)
+
+      pendingWaiters.set(type, {
+        resolve: (data) => {
+          clearTimeout(timer)
+          resolve(data)
+        },
+        reject: (err) => {
+          clearTimeout(timer)
+          reject(err)
+        },
+      })
+    })
+  }
+
+  /** Register a persistent handler for a media message type. */
+  function onMediaMessage(type: string, handler: MediaMessageHandler) {
+    mediaHandlers.set(type, handler)
+  }
+
+  /** Remove a persistent handler for a media message type. */
+  function offMediaMessage(type: string) {
+    mediaHandlers.delete(type)
+  }
+
   function cleanup() {
     if (pingInterval) {
       clearInterval(pingInterval)
@@ -87,7 +144,9 @@ export const useWsStore = defineStore('ws', () => {
     socket?.close()
     socket = null
     status.value = 'disconnected'
+    pendingWaiters.clear()
+    mediaHandlers.clear()
   }
 
-  return { status, connect, disconnect, send, sendTyping }
+  return { status, connect, disconnect, send, sendTyping, waitForMessage, onMediaMessage, offMediaMessage }
 })

@@ -30,3 +30,4 @@ base64.workspace = true
 futures.workspace = true
 validator.workspace = true
 async-trait.workspace = true
+mediasoup.workspace = true

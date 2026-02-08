@@ -39,8 +39,7 @@ export const useChannelStore = defineStore('channels', () => {
   async function fetchChannels(tenantId: string) {
     loading.value = true
     try {
-      const data = await api.get<{ items: Channel[] }>(`/tenant/${tenantId}/channel`)
-      channels.value = data.items
+      channels.value = await api.get<Channel[]>(`/tenant/${tenantId}/channel`)
     } finally {
       loading.value = false
     }
@@ -61,7 +60,7 @@ export const useChannelStore = defineStore('channels', () => {
   }
 
   async function explore(tenantId: string, query: string) {
-    return api.get<{ items: Channel[] }>(
+    return api.get<Channel[]>(
       `/tenant/${tenantId}/channel/explore?q=${encodeURIComponent(query)}`,
     )
   }

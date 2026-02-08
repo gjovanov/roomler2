@@ -72,7 +72,7 @@ tempfile = "3"
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 
 # mediasoup
-# mediasoup = "0.20"  # TODO: enable when ready for Phase 5
+mediasoup = "0.20"
 
 # Testing
 tokio-test = "0.4"

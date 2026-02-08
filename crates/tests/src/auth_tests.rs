@@ -274,6 +274,84 @@ async fn refresh_token_generates_new_access_token() {
 }
 
 #[tokio::test]
+async fn login_with_username_only_succeeds() {
+    let app = TestApp::spawn().await;
+
+    // Register first
+    let resp = app
+        .client
+        .post(app.url("/api/auth/register"))
+        .json(&serde_json::json!({
+            "email": "usernameonly@test.com",
+            "username": "usernameonly",
+            "display_name": "Username Only",
+            "password": "Password123!",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 201, "Registration should succeed");
+
+    // Login with username only (no email field in the JSON body).
+    // This validates the #[serde(default)] fix on LoginRequest's Optional fields.
+    let resp = app
+        .client
+        .post(app.url("/api/auth/login"))
+        .json(&serde_json::json!({
+            "username": "usernameonly",
+            "password": "Password123!",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let json: Value = resp.json().await.unwrap();
+    assert!(json["access_token"].is_string());
+    assert_eq!(json["user"]["username"], "usernameonly");
+}
+
+#[tokio::test]
+async fn login_with_email_only_no_username_field() {
+    let app = TestApp::spawn().await;
+
+    // Register first
+    let resp = app
+        .client
+        .post(app.url("/api/auth/register"))
+        .json(&serde_json::json!({
+            "email": "emailonly@test.com",
+            "username": "emailonly",
+            "display_name": "Email Only",
+            "password": "Password123!",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 201, "Registration should succeed");
+
+    // Login with email only (no username field in the JSON body).
+    // This also validates the #[serde(default)] fix.
+    let resp = app
+        .client
+        .post(app.url("/api/auth/login"))
+        .json(&serde_json::json!({
+            "email": "emailonly@test.com",
+            "password": "Password123!",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let json: Value = resp.json().await.unwrap();
+    assert!(json["access_token"].is_string());
+    assert_eq!(json["user"]["email"], "emailonly@test.com");
+}
+
+#[tokio::test]
 async fn health_check_returns_ok() {
     let app = TestApp::spawn().await;
 

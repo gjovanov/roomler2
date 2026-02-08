@@ -46,6 +46,25 @@ export async function createTenantViaApi(token: string, name: string, slug: stri
   return (await resp.json()) as { id: string; name: string; slug: string }
 }
 
+/** Create a channel via the API */
+export async function createChannelViaApi(
+  token: string,
+  tenantId: string,
+  name: string,
+  channelType = 'text',
+) {
+  const resp = await fetch(`${API_URL}/api/tenant/${tenantId}/channel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ name, channel_type: channelType }),
+  })
+  if (!resp.ok) throw new Error(`Create channel failed: ${resp.status}`)
+  return (await resp.json()) as { id: string; name: string; path: string }
+}
+
 /** Login through the UI */
 export async function loginViaUi(page: Page, username: string, password: string) {
   await page.goto('/login')

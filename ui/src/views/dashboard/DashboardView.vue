@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTenantStore } from '@/stores/tenant'
 
@@ -51,4 +51,8 @@ async function handleCreate() {
   const tenant = await tenantStore.createTenant(name.value, slug.value)
   router.push(`/tenant/${tenant.id}`)
 }
+
+onMounted(() => {
+  tenantStore.fetchTenants()
+})
 </script>

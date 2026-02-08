@@ -25,8 +25,8 @@ async fn main() -> anyhow::Result<()> {
     // Ensure indexes
     ensure_indexes(&db).await?;
 
-    // Build app state
-    let app_state = AppState::new(db, settings.clone());
+    // Build app state (async: spawns mediasoup workers)
+    let app_state = AppState::new(db, settings.clone()).await?;
 
     // Build router
     let app = build_router(app_state);

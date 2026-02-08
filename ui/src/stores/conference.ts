@@ -27,9 +27,6 @@ export const useConferenceStore = defineStore('conference', () => {
   const current = ref<Conference | null>(null)
   const participants = ref<Participant[]>([])
   const loading = ref(false)
-  const localStream = ref<MediaStream | null>(null)
-  const isMuted = ref(false)
-  const isVideoOn = ref(true)
 
   async function fetchConferences(tenantId: string) {
     loading.value = true
@@ -48,12 +45,16 @@ export const useConferenceStore = defineStore('conference', () => {
   }
 
   async function startConference(tenantId: string, conferenceId: string) {
-    await api.post(`/tenant/${tenantId}/conference/${conferenceId}/start`)
+    const result = await api.post<{ started: boolean; rtp_capabilities: unknown }>(
+      `/tenant/${tenantId}/conference/${conferenceId}/start`,
+    )
+    return result
   }
 
   async function joinConference(tenantId: string, conferenceId: string) {
-    const data = await api.post<Conference>(`/tenant/${tenantId}/conference/${conferenceId}/join`)
-    current.value = data
+    const data = await api.post<{ participant_id: string; joined: boolean; transports?: unknown }>(
+      `/tenant/${tenantId}/conference/${conferenceId}/join`,
+    )
     return data
   }
 
@@ -61,48 +62,26 @@ export const useConferenceStore = defineStore('conference', () => {
     await api.post(`/tenant/${tenantId}/conference/${conferenceId}/leave`)
     current.value = null
     participants.value = []
-    stopLocalStream()
   }
 
   async function endConference(tenantId: string, conferenceId: string) {
     await api.post(`/tenant/${tenantId}/conference/${conferenceId}/end`)
     current.value = null
     participants.value = []
-    stopLocalStream()
   }
 
-  async function startLocalStream() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: true,
-    })
-    localStream.value = stream
-    return stream
+  async function fetchConference(tenantId: string, conferenceId: string) {
+    const conf = await api.get<Conference>(`/tenant/${tenantId}/conference/${conferenceId}`)
+    current.value = conf
+    return conf
   }
 
-  function stopLocalStream() {
-    if (localStream.value) {
-      localStream.value.getTracks().forEach((t) => t.stop())
-      localStream.value = null
-    }
-  }
-
-  function toggleMute() {
-    isMuted.value = !isMuted.value
-    if (localStream.value) {
-      localStream.value.getAudioTracks().forEach((t) => {
-        t.enabled = !isMuted.value
-      })
-    }
-  }
-
-  function toggleVideo() {
-    isVideoOn.value = !isVideoOn.value
-    if (localStream.value) {
-      localStream.value.getVideoTracks().forEach((t) => {
-        t.enabled = isVideoOn.value
-      })
-    }
+  async function fetchParticipants(tenantId: string, conferenceId: string) {
+    const parts = await api.get<Participant[]>(
+      `/tenant/${tenantId}/conference/${conferenceId}/participant`,
+    )
+    participants.value = parts
+    return parts
   }
 
   return {
@@ -110,18 +89,13 @@ export const useConferenceStore = defineStore('conference', () => {
     current,
     participants,
     loading,
-    localStream,
-    isMuted,
-    isVideoOn,
     fetchConferences,
     createConference,
     startConference,
     joinConference,
     leaveConference,
     endConference,
-    startLocalStream,
-    stopLocalStream,
-    toggleMute,
-    toggleVideo,
+    fetchConference,
+    fetchParticipants,
   }
 })

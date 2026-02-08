@@ -46,7 +46,7 @@ roomler2/
 |-------|---------|-----------------|
 | `config` | Load settings from config files + `ROOMLER__` env vars | `config`, `serde` |
 | `db` | Define 18 MongoDB models, indexes, base DAO trait | `mongodb`, `bson`, `serde` |
-| `services` | Auth (JWT + argon2), DAOs, export, cloud storage, media | `jsonwebtoken`, `argon2`, `rust_xlsxwriter`, `genpdf` |
+| `services` | Auth (JWT + argon2), DAOs, export, cloud storage, mediasoup SFU | `jsonwebtoken`, `argon2`, `rust_xlsxwriter`, `mediasoup` |
 | `api` | Axum router, REST routes, WebSocket handler, middleware | `axum`, `tower-http` |
 | `tests` | Integration test suite (12 test modules + fixtures) | `reqwest`, `tokio-test` |
 
@@ -92,10 +92,14 @@ Browser
       WsStorage (register connection)
         │
         ▼
-      Message Loop (ping/pong, typing, presence)
+      Message Loop (ping/pong, typing, presence, media signaling)
         │
-        ▼
-      Dispatcher (broadcast to channel members)
+        ├─► Dispatcher (broadcast to channel members)
+        │
+        └─► mediasoup Signaling
+              │
+              ▼
+            WorkerPool → Router → WebRtcTransport → Producer/Consumer
 ```
 
 ## Backend Layers
@@ -114,7 +118,7 @@ Browser
 - **Export** -- Conversation export to XLSX (`rust_xlsxwriter`) and PDF (`genpdf`)
 - **Cloud Storage** -- S3/MinIO file operations
 - **Background Tasks** -- Async processing for recordings, transcriptions, exports
-- **Media** -- Future mediasoup integration (Phase 5)
+- **Media** -- mediasoup 0.20 SFU: WorkerPool (round-robin), RoomManager (Router/Transport/Producer/Consumer), WebSocket signaling protocol
 
 ### Data Layer (`crates/db`)
 

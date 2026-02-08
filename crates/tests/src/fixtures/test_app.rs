@@ -42,7 +42,9 @@ impl TestApp {
 
         ensure_indexes(&db).await.expect("Failed to create indexes");
 
-        let app_state = AppState::new(db.clone(), settings.clone());
+        let app_state = AppState::new(db.clone(), settings.clone())
+            .await
+            .expect("Failed to create AppState");
         let app = build_router(app_state);
 
         let listener = TcpListener::bind("127.0.0.1:0")

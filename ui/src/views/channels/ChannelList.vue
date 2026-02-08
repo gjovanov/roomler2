@@ -31,6 +31,9 @@
       <v-card>
         <v-card-title>{{ $t('channel.create') }}</v-card-title>
         <v-card-text>
+          <v-alert v-if="createError" type="error" closable class="mb-4" @click:close="createError = null">
+            {{ createError }}
+          </v-alert>
           <v-text-field v-model="newChannel.name" :label="$t('channel.name')" required />
           <v-select
             v-model="newChannel.type"
@@ -53,6 +56,7 @@
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { useChannelStore } from '@/stores/channels'
+import { ApiError } from '@/api/client'
 import ChannelTreeItem from '@/components/channels/ChannelTreeItem.vue'
 
 const route = useRoute()
@@ -67,17 +71,27 @@ const newChannel = reactive({
   type: 'text',
   is_private: false,
 })
+const createError = ref<string | null>(null)
 
 async function createChannel() {
-  await channelStore.createChannel(tenantId.value, {
-    name: newChannel.name,
-    channel_type: newChannel.type,
-    is_private: newChannel.is_private,
-  })
-  showCreate.value = false
-  newChannel.name = ''
-  newChannel.type = 'text'
-  newChannel.is_private = false
+  createError.value = null
+  try {
+    await channelStore.createChannel(tenantId.value, {
+      name: newChannel.name,
+      channel_type: newChannel.type,
+      is_private: newChannel.is_private,
+    })
+    showCreate.value = false
+    newChannel.name = ''
+    newChannel.type = 'text'
+    newChannel.is_private = false
+  } catch (e) {
+    if (e instanceof ApiError && typeof (e.data as Record<string, unknown>)?.error === 'string') {
+      createError.value = (e.data as Record<string, string>).error
+    } else {
+      createError.value = (e as Error).message
+    }
+  }
 }
 
 onMounted(() => {

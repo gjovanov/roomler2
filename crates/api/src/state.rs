@@ -7,7 +7,7 @@ use roomler2_services::{
         message::MessageDao, reaction::ReactionDao, recording::RecordingDao,
         tenant::TenantDao, transcription::TranscriptionDao, user::UserDao,
     },
-    media::room_manager::RoomManager,
+    media::{room_manager::RoomManager, worker_pool::WorkerPool},
 };
 use std::sync::Arc;
 
@@ -34,7 +34,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Database, settings: Settings) -> Self {
+    pub async fn new(db: Database, settings: Settings) -> anyhow::Result<Self> {
         let auth = Arc::new(AuthService::new(settings.jwt.clone()));
         let users = Arc::new(UserDao::new(&db));
         let tenants = Arc::new(TenantDao::new(&db));
@@ -46,7 +46,10 @@ impl AppState {
         let recordings = Arc::new(RecordingDao::new(&db));
         let transcriptions = Arc::new(TranscriptionDao::new(&db));
         let tasks = Arc::new(TaskService::new(&db));
-        let room_manager = Arc::new(RoomManager::new());
+
+        let worker_pool = Arc::new(WorkerPool::new(&settings.mediasoup).await?);
+        let room_manager = Arc::new(RoomManager::new(worker_pool, &settings.mediasoup));
+
         let ws_storage = Arc::new(WsStorage::new());
         let recognition = RecognitionService::new(
             settings.claude.api_key.clone(),
@@ -54,7 +57,7 @@ impl AppState {
             settings.claude.max_tokens,
         );
 
-        Self {
+        Ok(Self {
             db,
             settings,
             auth,
@@ -71,6 +74,6 @@ impl AppState {
             room_manager,
             ws_storage,
             recognition,
-        }
+        })
     }
 }
