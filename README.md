@@ -1,112 +1,117 @@
 # Roomler2
 
-Real-time communication and collaboration platform with multi-tenancy, channels, chat, video conferencing, file sharing, cloud storage integrations, and AI-powered document recognition.
+Real-time communication and collaboration platform with multi-tenancy, channels, chat, video conferencing (mediasoup WebRTC SFU), file sharing, cloud storage integrations, and AI-powered document recognition.
 
 ## Features
 
-- **Multi-Tenancy** -- Organizations with plans (Free / Pro / Business / Enterprise), roles, and permissions
-- **Channels** -- Hierarchical channel tree with 8 types: Category, Text, Voice, Announcement, Forum, Stage, DM, GroupDM
-- **Real-Time Chat** -- Threaded messages, reactions (unicode + custom emoji), mentions, embeds, attachments, pinning
-- **Video Conferencing** -- Instant / Scheduled / Recurring / Persistent meetings, recordings, transcriptions
-- **File Management** -- Versioned uploads, cloud sync (Google Drive, OneDrive, Dropbox), AI document recognition via Claude API
-- **Export** -- Conversation export to XLSX and PDF
-- **WebSocket** -- Live presence, typing indicators, real-time message delivery
+| Category | Feature | Status |
+|----------|---------|--------|
+| **Multi-Tenancy** | Organizations with plans (Free/Pro/Business/Enterprise) | :white_check_mark: |
+| | Roles & permissions (Owner, Admin, Moderator, Member) | :white_check_mark: |
+| | Invite system (shareable links, email invites) | :white_check_mark: |
+| | OAuth login (Google, Facebook, GitHub, LinkedIn, Microsoft) | :white_check_mark: |
+| **Channels** | Hierarchical channel tree (8 types) | :white_check_mark: |
+| | Category, Text, Voice, Announcement, Forum, Stage, DM, GroupDM | :white_check_mark: |
+| | Channel explore & member management | :white_check_mark: |
+| **Real-Time Chat** | Threaded messages with replies | :white_check_mark: |
+| | Reactions (unicode + custom emoji) | :white_check_mark: |
+| | Mentions, embeds, attachments, pinning | :white_check_mark: |
+| | Typing indicators & presence | :white_check_mark: |
+| **Video Conferencing** | mediasoup WebRTC SFU | :white_check_mark: |
+| | Instant / Scheduled / Recurring / Persistent meetings | :white_check_mark: |
+| | Multiple producers/consumers per participant | :white_check_mark: |
+| | Recordings & transcriptions | :white_check_mark: |
+| **File Management** | Versioned uploads, multipart upload | :white_check_mark: |
+| | Cloud sync (Google Drive, OneDrive, Dropbox) | :white_check_mark: |
+| | AI document recognition (Claude API) | :white_check_mark: |
+| **Export** | Conversation export to XLSX | :white_check_mark: |
+| | PDF export (custom raw PDF 1.4 generator) | :white_check_mark: |
+| | Background task processing | :white_check_mark: |
+| **WebSocket** | Live presence & typing indicators | :white_check_mark: |
+| | Real-time message delivery | :white_check_mark: |
+| | Media signaling (join/produce/consume) | :white_check_mark: |
+| **Frontend** | Vue 3 + Vuetify 3 SPA | :white_check_mark: |
+| | 8 Pinia stores, 10 views | :white_check_mark: |
+| | Dark/Light theme, i18n | :white_check_mark: |
+| | mediasoup-client composable + VideoTile | :white_check_mark: |
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Rust, Axum 0.8, Tokio |
-| Frontend | Vue 3, Vuetify 3, Pinia, Vue Router, vue-i18n |
-| Database | MongoDB 7 |
-| Cache / Pub-Sub | Redis 7 |
-| Object Storage | MinIO (S3-compatible) |
-| TURN Server | Coturn |
-| AI | Claude API (document recognition) |
-| Auth | JWT (argon2 password hashing, httpOnly cookies) |
-| Testing | Rust integration tests, Playwright E2E |
+| **Backend** | Rust (edition 2024), Axum 0.8, Tokio |
+| **Frontend** | Vue 3, Vuetify 3, Pinia, Vue Router, vue-i18n |
+| **Database** | MongoDB 7 (mongodb 3.2 driver) |
+| **WebRTC** | mediasoup 0.20 (SFU), mediasoup-client 3.7 |
+| **Auth** | JWT (argon2 hashing), httpOnly cookies, OAuth 2.0 |
+| **AI** | Claude API (document recognition) |
+| **Cloud** | Google Drive, OneDrive, Dropbox (OAuth2 + async_trait) |
+| **Testing** | 77 Rust integration tests, 24 Playwright E2E tests |
+| **Infrastructure** | Docker Compose (MongoDB, Redis, MinIO, Coturn) |
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph Client["Browser"]
+        UI["Vue 3 + Vuetify 3 SPA<br/>Pinia (9 stores) · mediasoup-client 3.7<br/>:5000"]
+    end
+
+    subgraph Server["Rust / Axum 0.8"]
+        REST["REST Routes<br/>17 modules"]
+        WS["WebSocket Handler<br/>Presence · Typing · Signaling"]
+        AUTH["Auth Middleware<br/>JWT · OAuth 2.0 · argon2"]
+        SVC["Services Layer<br/>DAOs · Auth · Export · Background Tasks"]
+        MEDIA["mediasoup 0.20 SFU<br/>WorkerPool · RoomManager<br/>Router / Transport / Producer / Consumer"]
+    end
+
+    subgraph External["External Services"]
+        CLOUD["Cloud Storage<br/>Google Drive · OneDrive · Dropbox"]
+        AI["Claude API<br/>Document Recognition"]
+        OAUTH["OAuth Providers<br/>Google · Facebook · GitHub<br/>LinkedIn · Microsoft"]
+    end
+
+    DB[("MongoDB 7<br/>18 collections")]
+
+    UI -->|"REST / HTTP"| REST
+    UI -->|"WebSocket"| WS
+    UI -->|"WebRTC"| MEDIA
+    AUTH --> REST
+    AUTH --> WS
+    REST --> SVC
+    WS --> SVC
+    WS --> MEDIA
+    SVC --> DB
+    SVC --> CLOUD
+    SVC --> AI
+    AUTH --> OAUTH
+
+    style UI fill:#1565C0,color:#fff
+    style REST fill:#0D47A1,color:#fff
+    style WS fill:#0D47A1,color:#fff
+    style AUTH fill:#4A148C,color:#fff
+    style SVC fill:#00695C,color:#fff
+    style MEDIA fill:#E65100,color:#fff
+    style DB fill:#2E7D32,color:#fff
+    style CLOUD fill:#37474F,color:#fff
+    style AI fill:#37474F,color:#fff
+    style OAUTH fill:#37474F,color:#fff
+```
 
 ## Quick Start
 
-### Prerequisites
-
-- Rust (edition 2024)
-- Node.js
-- Docker & Docker Compose
-
-### 1. Start infrastructure
-
 ```bash
-docker-compose up -d
-```
+# 1. Start infrastructure
+docker-compose up -d    # MongoDB, Redis, MinIO, Coturn
 
-This starts MongoDB, Redis, MinIO, and Coturn.
+# 2. Configure
+cp .env.example .env    # Edit with your settings
 
-### 2. Configure environment
+# 3. Run backend
+cargo build && cargo run   # API at http://localhost:3000
 
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-### 3. Run backend
-
-```bash
-cargo build
-cargo run
-```
-
-The API server starts on `http://localhost:3000`.
-
-### 4. Run frontend
-
-```bash
-cd ui
-npm install
-npm run dev
-```
-
-The dev server starts on `http://localhost:5173`.
-
-## Project Structure
-
-```
-roomler2/
-├── Cargo.toml              # Workspace root
-├── docker-compose.yml      # Infrastructure services
-├── .env.example            # Environment variable template
-├── crates/
-│   ├── config/             # Configuration loading (config files + env vars)
-│   ├── db/                 # MongoDB models, DAOs, indexes
-│   │   └── src/models/     # 18 data models
-│   ├── services/           # Business logic layer
-│   │   └── src/
-│   │       ├── auth/       # JWT, password hashing
-│   │       ├── dao/        # Data access objects
-│   │       ├── export/     # XLSX and PDF export
-│   │       ├── cloud_storage/  # S3/MinIO operations
-│   │       ├── background/ # Async task processing
-│   │       └── media/      # Media handling
-│   ├── api/                # Axum HTTP + WebSocket layer
-│   │   └── src/
-│   │       ├── routes/     # REST endpoint handlers
-│   │       ├── ws/         # WebSocket handler, storage, dispatcher
-│   │       ├── middleware/  # Auth middleware
-│   │       └── extractors/ # Request extractors
-│   └── tests/              # Integration test suite
-│       └── src/
-│           ├── fixtures/   # test_app.rs, seed.rs
-│           └── *_tests.rs  # 12 test modules
-└── ui/                     # Vue 3 SPA
-    ├── src/
-    │   ├── views/          # Page components
-    │   ├── components/     # Reusable UI components
-    │   ├── stores/         # 8 Pinia stores
-    │   ├── composables/    # useAuth, useWebSocket
-    │   ├── api/            # HTTP/WS client
-    │   ├── plugins/        # Router, Vuetify, i18n
-    │   └── locales/        # i18n translations
-    └── e2e/                # 6 Playwright spec files
+# 4. Run frontend
+cd ui && npm install && npm run dev   # UI at http://localhost:5173
 ```
 
 ## Documentation
@@ -117,10 +122,9 @@ roomler2/
 | [Data Model](docs/data-model.md) | All 18 entities, ER diagram, indexes |
 | [API Reference](docs/api.md) | REST endpoints, request/response schemas |
 | [Frontend](docs/ui.md) | Routes, components, Pinia stores |
-| [Use Cases](docs/use-cases.md) | User flows, permissions, lifecycle diagrams |
-| [Real-Time](docs/real-time.md) | WebSocket protocol, presence, typing indicators |
-| [Testing](docs/testing.md) | Integration tests, E2E tests, fixtures |
-| [Deployment](docs/deployment.md) | Docker Compose, environment variables, config |
+| [Real-Time](docs/real-time.md) | WebSocket protocol, presence, media signaling |
+| [Testing](docs/testing.md) | 77 integration tests, 24 E2E tests |
+| [Deployment](docs/deployment.md) | Docker Compose, environment variables |
 
 ## License
 

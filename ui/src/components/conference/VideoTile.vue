@@ -1,9 +1,9 @@
 <template>
   <v-card class="video-tile" color="grey-darken-3" elevation="2">
     <div class="video-container" style="aspect-ratio: 16/9; position: relative; overflow: hidden">
-      <!-- Video element -->
+      <!-- Video element — always in DOM and visible so Chrome autoplay works.
+           The avatar overlay covers it when there's no video track. -->
       <video
-        v-show="hasVideoTrack"
         ref="videoRef"
         autoplay
         playsinline
@@ -12,10 +12,11 @@
         style="object-fit: cover"
       />
 
-      <!-- Avatar fallback when video is off -->
+      <!-- Avatar overlay when video is off (positioned on top of video) -->
       <div
         v-show="!hasVideoTrack"
         class="d-flex align-center justify-center w-100 h-100 bg-grey-darken-4"
+        style="position: absolute; top: 0; left: 0; z-index: 1"
       >
         <v-avatar size="64" color="primary">
           <span class="text-h5">{{ initial }}</span>
@@ -41,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps<{
   stream: MediaStream | null
@@ -56,22 +57,94 @@ const initial = computed(() =>
   props.displayName ? props.displayName.charAt(0).toUpperCase() : '?',
 )
 
-const hasVideoTrack = computed(() => {
-  if (!props.stream) return false
-  return props.stream.getVideoTracks().some((t) => t.enabled && t.readyState === 'live')
-})
+// Use a ref instead of computed — native MediaStream/Track state changes
+// (addtrack, readyState) are invisible to Vue's reactivity system.
+const hasVideoTrack = ref(false)
+
+function checkVideoTrack() {
+  if (!props.stream) {
+    hasVideoTrack.value = false
+    return
+  }
+  hasVideoTrack.value = props.stream
+    .getVideoTracks()
+    .some((t) => t.enabled && t.readyState === 'live')
+}
+
+function setupTrackListeners(stream: MediaStream) {
+  stream.getVideoTracks().forEach((track) => {
+    track.onended = () => checkVideoTrack()
+    track.onmute = () => checkVideoTrack()
+    track.onunmute = () => checkVideoTrack()
+  })
+}
+
+function cleanupTrackListeners(stream: MediaStream) {
+  stream.getVideoTracks().forEach((track) => {
+    track.onended = null
+    track.onmute = null
+    track.onunmute = null
+  })
+}
 
 function attachStream() {
   if (videoRef.value && props.stream) {
     videoRef.value.srcObject = props.stream
+    videoRef.value.play().catch(() => {})
   }
+  if (props.stream) {
+    setupTrackListeners(props.stream)
+  }
+  checkVideoTrack()
 }
 
-watch(() => props.stream, attachStream)
+watch(
+  () => props.stream,
+  (newStream, oldStream) => {
+    // Clean up listeners on old stream
+    if (oldStream) {
+      cleanupTrackListeners(oldStream)
+      oldStream.onaddtrack = null
+      oldStream.onremovetrack = null
+    }
+    // Attach to video element
+    attachStream()
+    // Listen for track changes on the new stream
+    if (newStream) {
+      newStream.onaddtrack = () => {
+        setupTrackListeners(newStream)
+        checkVideoTrack()
+      }
+      newStream.onremovetrack = () => checkVideoTrack()
+    }
+  },
+)
 
-onMounted(attachStream)
+// Re-trigger play when video becomes visible (overlay hides)
+watch(hasVideoTrack, (val) => {
+  if (val) {
+    nextTick(() => videoRef.value?.play().catch(() => {}))
+  }
+})
+
+onMounted(() => {
+  attachStream()
+  // Also listen for track changes if stream is already set
+  if (props.stream) {
+    props.stream.onaddtrack = () => {
+      setupTrackListeners(props.stream!)
+      checkVideoTrack()
+    }
+    props.stream.onremovetrack = () => checkVideoTrack()
+  }
+})
 
 onBeforeUnmount(() => {
+  if (props.stream) {
+    cleanupTrackListeners(props.stream)
+    props.stream.onaddtrack = null
+    props.stream.onremovetrack = null
+  }
   if (videoRef.value) {
     videoRef.value.srcObject = null
   }

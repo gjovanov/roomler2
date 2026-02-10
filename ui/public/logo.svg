@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <!-- Speech bubble -->
+  <path d="M60 10C30.2 10 6 29.8 6 54c0 13.4 6.8 25.4 17.5 33.5L18 102l19.5-9.8C43.8 95 51.6 97 60 97c29.8 0 54-19.3 54-43S89.8 10 60 10z" fill="#1565C0"/>
+  <path d="M60 14C32.4 14 10 31.6 10 54c0 12.4 6.4 23.6 16.5 31.2l-4 12 15.8-7.9C44 91.8 51.8 93.5 60 93.5c27.6 0 50-17.1 50-39.5S87.6 14 60 14z" fill="#42A5F5"/>
+  <!-- Letter R -->
+  <text x="60" y="67" font-size="42" text-anchor="middle" fill="white" font-family="Arial, Helvetica, sans-serif" font-weight="bold">R</text>
+</svg>

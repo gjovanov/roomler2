@@ -255,12 +255,27 @@ async fn handle_media_join(
         super::dispatcher::send_to_connection(&state.ws_storage, connection_id, &msg).await;
     }
 
+    // Build ICE servers list (TURN) if configured
+    let ice_servers: Vec<serde_json::Value> = if let Some(ref url) = state.settings.turn.url {
+        vec![serde_json::json!({
+            "urls": [url],
+            "username": state.settings.turn.username.as_deref().unwrap_or(""),
+            "credential": state.settings.turn.password.as_deref().unwrap_or(""),
+        })]
+    } else {
+        vec![]
+    };
+
+    let force_relay = state.settings.turn.force_relay.unwrap_or(false);
+
     // Send transport options (targeted to this connection only)
     let msg = serde_json::json!({
         "type": "media:transport_created",
         "data": {
             "send_transport": transport_pair.send_transport,
             "recv_transport": transport_pair.recv_transport,
+            "ice_servers": ice_servers,
+            "force_relay": force_relay,
         }
     });
     super::dispatcher::send_to_connection(&state.ws_storage, connection_id, &msg).await;

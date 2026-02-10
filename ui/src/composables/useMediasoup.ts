@@ -31,11 +31,15 @@ export function useMediasoup() {
   /** Join a mediasoup room: loads device, creates transports */
   async function joinRoom(confId: string) {
     conferenceId.value = confId
+    console.log('[mediasoup] joinRoom:', confId)
 
     // Register handlers FIRST so no messages are dropped while awaiting transports.
     // Buffer any new_producer messages that arrive before transports are ready.
     const pendingProducers: Array<{ producer_id: string; user_id: string; kind: string }> = []
-    ws.onMediaMessage('media:new_producer', (data) => pendingProducers.push(data))
+    ws.onMediaMessage('media:new_producer', (data) => {
+      console.log('[mediasoup] buffering new_producer:', data)
+      pendingProducers.push(data)
+    })
     ws.onMediaMessage('media:peer_left', handlePeerLeft)
     ws.onMediaMessage('media:producer_closed', handleProducerClosed)
 
@@ -46,12 +50,26 @@ export function useMediasoup() {
     ws.send('media:join', { conference_id: confId })
 
     const capsMsg = await capabilitiesPromise
+    console.log('[mediasoup] got router_capabilities')
     const transportMsg = await transportPromise
+    console.log('[mediasoup] got transport_created, send:', transportMsg.send_transport?.id, 'recv:', transportMsg.recv_transport?.id)
 
     // Load device with router RTP capabilities
     const dev = new Device()
     await dev.load({ routerRtpCapabilities: capsMsg.rtp_capabilities })
     device.value = dev
+    console.log('[mediasoup] device loaded')
+
+    // Build iceServers from TURN config (if provided by server)
+    const iceServers = transportMsg.ice_servers?.length
+      ? transportMsg.ice_servers.map((s: { urls: string[]; username: string; credential: string }) => ({
+          urls: s.urls,
+          username: s.username,
+          credential: s.credential,
+        }))
+      : undefined
+    const iceTransportPolicy = transportMsg.force_relay ? 'relay' : 'all'
+    console.log('[mediasoup] ICE config:', { iceServers, iceTransportPolicy })
 
     // Create send transport
     const sendParams = transportMsg.send_transport
@@ -60,6 +78,12 @@ export function useMediasoup() {
       iceParameters: sendParams.ice_parameters,
       iceCandidates: sendParams.ice_candidates,
       dtlsParameters: sendParams.dtls_parameters,
+      iceServers,
+      iceTransportPolicy,
+    })
+
+    st.on('connectionstatechange', (state: string) => {
+      console.log('[mediasoup] sendTransport connectionState:', state)
     })
 
     st.on('connect', ({ dtlsParameters }, callback, errback) => {
@@ -96,6 +120,12 @@ export function useMediasoup() {
       iceParameters: recvParams.ice_parameters,
       iceCandidates: recvParams.ice_candidates,
       dtlsParameters: recvParams.dtls_parameters,
+      iceServers,
+      iceTransportPolicy,
+    })
+
+    rt.on('connectionstatechange', (state: string) => {
+      console.log('[mediasoup] recvTransport connectionState:', state)
     })
 
     rt.on('connect', ({ dtlsParameters }, callback, errback) => {
@@ -108,6 +138,7 @@ export function useMediasoup() {
     })
 
     recvTransport.value = rt
+    console.log('[mediasoup] transports created, buffered producers:', pendingProducers.length)
 
     // Replace the buffering handler with the real one now that transports are ready
     ws.onMediaMessage('media:new_producer', handleNewProducer)
@@ -120,19 +151,25 @@ export function useMediasoup() {
 
   /** Produce local audio + video tracks */
   async function produceLocalMedia() {
+    console.log('[mediasoup] producing local media...')
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
       video: true,
     })
     localStream.value = stream
+    console.log('[mediasoup] getUserMedia OK, audio tracks:', stream.getAudioTracks().length, 'video tracks:', stream.getVideoTracks().length)
 
-    if (!sendTransport.value) return
+    if (!sendTransport.value) {
+      console.warn('[mediasoup] no sendTransport, cannot produce')
+      return
+    }
 
     // Produce audio
     const audioTrack = stream.getAudioTracks()[0]
     if (audioTrack) {
       const audioProducer = await sendTransport.value.produce({ track: audioTrack })
       producers.set('audio', audioProducer)
+      console.log('[mediasoup] audio producer created:', audioProducer.id)
     }
 
     // Produce video
@@ -140,6 +177,7 @@ export function useMediasoup() {
     if (videoTrack) {
       const videoProducer = await sendTransport.value.produce({ track: videoTrack })
       producers.set('video', videoProducer)
+      console.log('[mediasoup] video producer created:', videoProducer.id)
     }
 
     return stream
@@ -147,8 +185,12 @@ export function useMediasoup() {
 
   /** Consume a remote producer */
   async function consumeProducer(producerId: string, userId: string) {
-    if (!recvTransport.value || !device.value) return
+    if (!recvTransport.value || !device.value) {
+      console.warn('[mediasoup] consumeProducer: missing recvTransport or device')
+      return
+    }
 
+    console.log('[mediasoup] consumeProducer:', producerId, 'from user:', userId)
     const resultPromise = ws.waitForMessage('media:consumer_created')
     ws.send('media:consume', {
       conference_id: conferenceId.value,
@@ -157,6 +199,7 @@ export function useMediasoup() {
     })
 
     const result = await resultPromise
+    console.log('[mediasoup] consumer_created response:', result.id, result.kind)
 
     const consumer = await recvTransport.value.consume({
       id: result.id,
@@ -166,22 +209,28 @@ export function useMediasoup() {
     })
 
     consumers.set(consumer.id, consumer)
+    console.log('[mediasoup] consumer track:', consumer.track.kind, 'readyState:', consumer.track.readyState, 'enabled:', consumer.track.enabled, 'muted:', consumer.track.muted)
 
     // Attach consumer track to remote stream.
     // Always create a new MediaStream so that Vue reactivity picks up the change
     // (addTrack on an existing stream is a DOM mutation invisible to Vue).
     const existing = remoteStreams.get(userId)
     const tracks = existing ? [...existing.stream.getTracks(), consumer.track] : [consumer.track]
+    const newStream = new MediaStream(tracks)
     remoteStreams.set(userId, {
       userId,
-      stream: new MediaStream(tracks),
+      stream: newStream,
       kind: result.kind,
     })
+    console.log('[mediasoup] remoteStreams updated for', userId, '— total tracks:', newStream.getTracks().length, 'video:', newStream.getVideoTracks().length)
   }
 
   /** Handle new_producer from WS — queued to avoid concurrent waitForMessage collisions */
   function handleNewProducer(data: { producer_id: string; user_id: string; kind: string }) {
-    consumeChain = consumeChain.then(() => consumeProducer(data.producer_id, data.user_id))
+    console.log('[mediasoup] handleNewProducer:', data.kind, 'from', data.user_id, 'producer:', data.producer_id)
+    consumeChain = consumeChain
+      .then(() => consumeProducer(data.producer_id, data.user_id))
+      .catch((err) => console.error('[mediasoup] consumeProducer failed:', err))
   }
 
   /** Handle peer_left from WS */

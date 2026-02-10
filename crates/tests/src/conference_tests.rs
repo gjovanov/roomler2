@@ -753,6 +753,141 @@ async fn conference_leave_cleans_up_participant_media() {
     ws.close(None).await.ok();
 }
 
+// --- TCP transport + TURN config tests ---
+
+#[tokio::test]
+async fn transport_created_contains_udp_and_tcp_candidates() {
+    let app = TestApp::spawn().await;
+    let tenant = app.seed_tenant("tcp1").await;
+    let conf_id =
+        create_and_start_conference(&app, &tenant.tenant_id, &tenant.admin.access_token, "TCP Transport Test").await;
+
+    app.auth_post(
+        &format!("/api/tenant/{}/conference/{}/join", tenant.tenant_id, conf_id),
+        &tenant.admin.access_token,
+    )
+    .send()
+    .await
+    .unwrap();
+
+    let (mut ws, transport) = ws_join_media(&app.addr, &tenant.admin.access_token, &conf_id).await;
+
+    // Check both send_transport and recv_transport ICE candidates
+    for transport_key in &["send_transport", "recv_transport"] {
+        let candidates = transport["data"][transport_key]["ice_candidates"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{} should have ice_candidates array", transport_key));
+
+        let has_udp = candidates
+            .iter()
+            .any(|c| c["protocol"].as_str() == Some("udp"));
+        let has_tcp = candidates
+            .iter()
+            .any(|c| c["protocol"].as_str() == Some("tcp"));
+
+        assert!(has_udp, "{} should have UDP ICE candidates", transport_key);
+        assert!(has_tcp, "{} should have TCP ICE candidates", transport_key);
+
+        // TCP candidates should be passive
+        for c in candidates.iter().filter(|c| c["protocol"].as_str() == Some("tcp")) {
+            assert_eq!(
+                c["tcpType"].as_str(),
+                Some("passive"),
+                "TCP ICE candidates should have tcpType: passive"
+            );
+        }
+    }
+
+    ws.close(None).await.ok();
+}
+
+#[tokio::test]
+async fn transport_created_includes_turn_config() {
+    let app = TestApp::spawn_with_settings(|s| {
+        s.turn.url = Some("turn:turn.example.com:3478".to_string());
+        s.turn.username = Some("testuser".to_string());
+        s.turn.password = Some("testpass".to_string());
+        s.turn.force_relay = Some(true);
+    })
+    .await;
+    let tenant = app.seed_tenant("turn1").await;
+    let conf_id =
+        create_and_start_conference(&app, &tenant.tenant_id, &tenant.admin.access_token, "TURN Config Test").await;
+
+    app.auth_post(
+        &format!("/api/tenant/{}/conference/{}/join", tenant.tenant_id, conf_id),
+        &tenant.admin.access_token,
+    )
+    .send()
+    .await
+    .unwrap();
+
+    let (mut ws, transport) = ws_join_media(&app.addr, &tenant.admin.access_token, &conf_id).await;
+
+    // Verify ice_servers contains our TURN config
+    let ice_servers = transport["data"]["ice_servers"]
+        .as_array()
+        .expect("ice_servers should be an array");
+    assert_eq!(ice_servers.len(), 1, "Should have exactly one TURN server");
+
+    let server = &ice_servers[0];
+    let urls = server["urls"].as_array().expect("urls should be an array");
+    assert_eq!(urls[0].as_str(), Some("turn:turn.example.com:3478"));
+    assert_eq!(server["username"].as_str(), Some("testuser"));
+    assert_eq!(server["credential"].as_str(), Some("testpass"));
+
+    // Verify force_relay
+    assert_eq!(
+        transport["data"]["force_relay"].as_bool(),
+        Some(true),
+        "force_relay should be true when configured"
+    );
+
+    ws.close(None).await.ok();
+}
+
+#[tokio::test]
+async fn transport_created_no_turn_by_default() {
+    let app = TestApp::spawn_with_settings(|s| {
+        s.turn.url = None;
+        s.turn.username = None;
+        s.turn.password = None;
+        s.turn.force_relay = None;
+    })
+    .await;
+    let tenant = app.seed_tenant("noturn1").await;
+    let conf_id =
+        create_and_start_conference(&app, &tenant.tenant_id, &tenant.admin.access_token, "No TURN Test").await;
+
+    app.auth_post(
+        &format!("/api/tenant/{}/conference/{}/join", tenant.tenant_id, conf_id),
+        &tenant.admin.access_token,
+    )
+    .send()
+    .await
+    .unwrap();
+
+    let (mut ws, transport) = ws_join_media(&app.addr, &tenant.admin.access_token, &conf_id).await;
+
+    // Verify ice_servers is empty
+    let ice_servers = transport["data"]["ice_servers"]
+        .as_array()
+        .expect("ice_servers should be an array");
+    assert!(
+        ice_servers.is_empty(),
+        "ice_servers should be empty when TURN is not configured"
+    );
+
+    // Verify force_relay is false
+    assert_eq!(
+        transport["data"]["force_relay"].as_bool(),
+        Some(false),
+        "force_relay should be false by default"
+    );
+
+    ws.close(None).await.ok();
+}
+
 // --- Connection-ID isolation tests ---
 
 /// Helper: connect WS, read "connected" message, send media:join, read router_capabilities + transport_created.

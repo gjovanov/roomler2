@@ -82,6 +82,7 @@ pub struct TurnSettings {
     pub url: Option<String>,
     pub username: Option<String>,
     pub password: Option<String>,
+    pub force_relay: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -124,6 +125,7 @@ impl Settings {
             .set_default("turn.url", None::<String>)?
             .set_default("turn.username", None::<String>)?
             .set_default("turn.password", None::<String>)?
+            .set_default("turn.force_relay", false)?
             .set_default("claude.model", "claude-sonnet-4-5-20250929")?
             .set_default("claude.max_tokens", 4096)?
             .set_default("oauth.base_url", "http://localhost:5001")?

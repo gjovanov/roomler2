@@ -42,7 +42,9 @@ export const useWsStore = defineStore('ws', () => {
     socket.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
-        console.debug('[WS] received:', msg.type)
+        if (msg.type?.startsWith('media:') || msg.type === 'connected') {
+          console.log('[WS] received:', msg.type)
+        }
         handleMessage(msg)
       } catch {
         // ignore malformed messages
@@ -92,7 +94,9 @@ export const useWsStore = defineStore('ws', () => {
   function send(type: string, data: unknown) {
     if (socket?.readyState === WebSocket.OPEN) {
       const payload = JSON.stringify({ type, data })
-      console.debug('[WS] sending:', type, 'readyState:', socket.readyState)
+      if (type.startsWith('media:')) {
+        console.log('[WS] sending:', type)
+      }
       socket.send(payload)
     } else {
       console.warn('[WS] cannot send, socket not open:', type, 'readyState:', socket?.readyState)

@@ -439,7 +439,7 @@ impl RoomManager {
         &self,
         router: &Router,
     ) -> anyhow::Result<WebRtcTransport> {
-        let listen_info = ListenInfo {
+        let udp_info = ListenInfo {
             protocol: Protocol::Udp,
             ip: self.listen_ip,
             announced_address: self.announced_ip.clone(),
@@ -451,7 +451,19 @@ impl RoomManager {
             expose_internal_ip: false,
         };
 
-        let listen_infos = WebRtcTransportListenInfos::new(listen_info);
+        let tcp_info = ListenInfo {
+            protocol: Protocol::Tcp,
+            ip: self.listen_ip,
+            announced_address: self.announced_ip.clone(),
+            port: None,
+            port_range: None,
+            flags: None,
+            send_buffer_size: None,
+            recv_buffer_size: None,
+            expose_internal_ip: false,
+        };
+
+        let listen_infos = WebRtcTransportListenInfos::new(udp_info).insert(tcp_info);
         let mut transport_options = WebRtcTransportOptions::new(listen_infos);
         transport_options.enable_udp = true;
         transport_options.enable_tcp = true;

@@ -75,6 +75,60 @@ impl TestApp {
         format!("{}{}", self.base_url, path)
     }
 
+    /// Spawn a test server with customized settings.
+    ///
+    /// The `mutator` closure receives a `&mut Settings` after defaults are applied,
+    /// allowing tests to tweak specific fields (e.g., TURN config).
+    pub async fn spawn_with_settings(mutator: impl FnOnce(&mut Settings)) -> Self {
+        let db_name = format!("roomler2_test_{}", uuid::Uuid::new_v4().simple());
+
+        let mut settings = Settings::load().unwrap_or_else(|_| test_settings());
+        if let Ok(url) = std::env::var("ROOMLER__DATABASE__URL") {
+            settings.database.url = url;
+        }
+        settings.database.name = db_name.clone();
+
+        // Apply caller's customizations
+        mutator(&mut settings);
+
+        let client_options = ClientOptions::parse(&settings.database.url)
+            .await
+            .expect("Failed to parse MongoDB URL");
+        let mongo_client =
+            Client::with_options(client_options).expect("Failed to create MongoDB client");
+        let db = mongo_client.database(&db_name);
+
+        ensure_indexes(&db).await.expect("Failed to create indexes");
+
+        let app_state = AppState::new(db.clone(), settings.clone())
+            .await
+            .expect("Failed to create AppState");
+        let app = build_router(app_state);
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Failed to bind to random port");
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let base_url = format!("http://{}", addr);
+        let client = reqwest::Client::builder()
+            .cookie_store(true)
+            .build()
+            .expect("Failed to build HTTP client");
+
+        Self {
+            addr,
+            base_url,
+            db,
+            settings,
+            client,
+        }
+    }
+
     /// Spawn a test server with OAuth providers configured (fake client IDs).
     /// Uses a no-redirect reqwest client so we can inspect the 302/307 Location header.
     pub async fn spawn_with_oauth() -> Self {
@@ -191,6 +245,7 @@ fn test_settings() -> Settings {
             url: None,
             username: None,
             password: None,
+            force_relay: None,
         },
         claude: roomler2_config::ClaudeSettings {
             api_key: None,
