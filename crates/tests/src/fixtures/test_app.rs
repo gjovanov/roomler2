@@ -275,5 +275,12 @@ fn test_settings() -> Settings {
                 client_secret: String::new(),
             },
         },
+        stripe: roomler2_config::StripeSettings {
+            secret_key: String::new(),
+            publishable_key: String::new(),
+            webhook_secret: String::new(),
+            price_pro: String::new(),
+            price_business: String::new(),
+        },
     }
 }

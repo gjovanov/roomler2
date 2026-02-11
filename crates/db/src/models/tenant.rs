@@ -87,6 +87,21 @@ pub struct BillingInfo {
     pub customer_id: Option<String>,
     pub subscription_id: Option<String>,
     pub current_period_end: Option<DateTime>,
+    #[serde(default)]
+    pub status: SubscriptionStatus,
+    #[serde(default)]
+    pub cancel_at_period_end: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SubscriptionStatus {
+    #[default]
+    Active,
+    PastDue,
+    Canceled,
+    Trialing,
+    Incomplete,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,4 +120,61 @@ pub struct OAuthCredential {
 
 impl Tenant {
     pub const COLLECTION: &'static str = "tenants";
+}
+
+pub struct PlanLimits {
+    pub max_members: u32,
+    pub max_channels: u32,
+    pub max_message_history: i64,
+    pub storage_bytes: u64,
+    pub video_max_participants: u32,
+    pub cloud_integrations: bool,
+    pub ai_recognition: bool,
+    pub recordings: bool,
+}
+
+impl Plan {
+    pub fn limits(&self) -> PlanLimits {
+        match self {
+            Plan::Free => PlanLimits {
+                max_members: 10,
+                max_channels: 5,
+                max_message_history: 5_000,
+                storage_bytes: 100 * 1024 * 1024,
+                video_max_participants: 0,
+                cloud_integrations: false,
+                ai_recognition: false,
+                recordings: false,
+            },
+            Plan::Pro => PlanLimits {
+                max_members: u32::MAX,
+                max_channels: u32::MAX,
+                max_message_history: -1,
+                storage_bytes: 10 * 1024 * 1024 * 1024,
+                video_max_participants: 10,
+                cloud_integrations: true,
+                ai_recognition: false,
+                recordings: false,
+            },
+            Plan::Business | Plan::Enterprise => PlanLimits {
+                max_members: u32::MAX,
+                max_channels: u32::MAX,
+                max_message_history: -1,
+                storage_bytes: 100 * 1024 * 1024 * 1024,
+                video_max_participants: 100,
+                cloud_integrations: true,
+                ai_recognition: true,
+                recordings: true,
+            },
+        }
+    }
+
+    pub fn price_monthly_cents(&self) -> u32 {
+        match self {
+            Plan::Free => 0,
+            Plan::Pro => 800,
+            Plan::Business => 1600,
+            Plan::Enterprise => 1600,
+        }
+    }
 }

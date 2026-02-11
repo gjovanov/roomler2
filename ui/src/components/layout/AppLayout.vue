@@ -104,6 +104,7 @@ const navItems = computed(() => {
     { icon: 'mdi-compass', title: 'Explore', to: `${base}/explore` },
     { icon: 'mdi-folder', title: 'Files', to: `${base}/files` },
     { icon: 'mdi-account-plus', title: 'Invites', to: `${base}/invites` },
+    { icon: 'mdi-credit-card', title: 'Billing', to: `${base}/billing` },
   ]
 })
 

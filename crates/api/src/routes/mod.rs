@@ -11,6 +11,7 @@ pub mod message;
 pub mod oauth;
 pub mod reaction;
 pub mod recording;
+pub mod stripe;
 pub mod tenant;
 pub mod transcription;
 pub mod user;

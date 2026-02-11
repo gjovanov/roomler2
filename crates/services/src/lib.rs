@@ -6,9 +6,11 @@ pub mod document_recognition;
 pub mod export;
 pub mod media;
 pub mod oauth;
+pub mod stripe;
 
 pub use auth::AuthService;
 pub use background::TaskService;
 pub use dao::*;
 pub use document_recognition::RecognitionService;
 pub use oauth::OAuthService;
+pub use stripe::StripeService;

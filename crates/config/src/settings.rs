@@ -12,6 +12,7 @@ pub struct Settings {
     pub turn: TurnSettings,
     pub claude: ClaudeSettings,
     pub oauth: OAuthSettings,
+    pub stripe: StripeSettings,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -92,6 +93,15 @@ pub struct ClaudeSettings {
     pub max_tokens: u32,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct StripeSettings {
+    pub secret_key: String,
+    pub publishable_key: String,
+    pub webhook_secret: String,
+    pub price_pro: String,
+    pub price_business: String,
+}
+
 impl Settings {
     pub fn load() -> Result<Self, ConfigError> {
         let config = Config::builder()
@@ -139,6 +149,11 @@ impl Settings {
             .set_default("oauth.linkedin.client_secret", "")?
             .set_default("oauth.microsoft.client_id", "")?
             .set_default("oauth.microsoft.client_secret", "")?
+            .set_default("stripe.secret_key", "")?
+            .set_default("stripe.publishable_key", "")?
+            .set_default("stripe.webhook_secret", "")?
+            .set_default("stripe.price_pro", "")?
+            .set_default("stripe.price_business", "")?
             .build()?;
 
         config.try_deserialize()

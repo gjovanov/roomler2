@@ -33,3 +33,6 @@ async-trait.workspace = true
 mediasoup.workspace = true
 urlencoding.workspace = true
 nanoid.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+hex.workspace = true

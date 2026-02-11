@@ -3,6 +3,18 @@ import type { RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
   {
+    path: '/landing',
+    name: 'landing',
+    component: () => import('@/views/LandingView.vue'),
+    meta: { guest: true },
+  },
+  {
+    path: '/pricing',
+    name: 'pricing',
+    component: () => import('@/views/LandingView.vue'),
+    meta: { guest: true },
+  },
+  {
     path: '/login',
     name: 'login',
     component: () => import('@/views/auth/LoginView.vue'),
@@ -83,6 +95,11 @@ const routes: RouteRecordRaw[] = [
             name: 'admin',
             component: () => import('@/views/admin/AdminPanel.vue'),
           },
+          {
+            path: 'billing',
+            name: 'billing',
+            component: () => import('@/views/billing/BillingView.vue'),
+          },
         ],
       },
     ],
@@ -97,7 +114,7 @@ const router = createRouter({
 router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('access_token')
   if (to.meta.auth && !token) {
-    next({ name: 'login' })
+    next({ name: 'landing' })
   } else if (to.meta.guest && token) {
     // After login/register, check for pending invite
     const pendingInvite = sessionStorage.getItem('pending_invite_code')

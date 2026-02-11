@@ -135,10 +135,18 @@ pub fn build_router(state: AppState) -> Router {
         .route("/{provider}", get(routes::oauth::oauth_redirect))
         .route("/callback/{provider}", get(routes::oauth::oauth_callback));
 
+    // Stripe routes (mixed auth: plans=public, checkout/portal=auth, webhook=signature)
+    let stripe_routes = Router::new()
+        .route("/plans", get(routes::stripe::get_plans))
+        .route("/checkout", post(routes::stripe::create_checkout))
+        .route("/portal", post(routes::stripe::create_portal))
+        .route("/webhook", post(routes::stripe::webhook));
+
     // Compose API
     let api = Router::new()
         .nest("/auth", auth_routes)
         .nest("/oauth", oauth_routes)
+        .nest("/stripe", stripe_routes)
         .nest("/invite", public_invite_routes)
         .nest("/tenant", tenant_routes)
         .nest("/tenant/{tenant_id}/member", member_routes)
