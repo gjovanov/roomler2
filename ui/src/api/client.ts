@@ -1,4 +1,8 @@
+import router from '@/plugins/router'
+
 const BASE_URL = '/api'
+
+const AUTH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/oauth/']
 
 interface RequestOptions {
   method?: string
@@ -43,6 +47,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}))
+
+    if (
+      (resp.status === 401 || resp.status === 403) &&
+      !AUTH_PATHS.some((p) => path.startsWith(p))
+    ) {
+      localStorage.removeItem('access_token')
+      router.push({ name: 'login' })
+    }
+
     throw new ApiError(resp.status, data)
   }
 

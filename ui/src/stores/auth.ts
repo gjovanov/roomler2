@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/api/client'
-import { useRouter } from 'vue-router'
+import router from '@/plugins/router'
 
 interface User {
   id: string
@@ -86,7 +86,6 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     user.value = null
     localStorage.removeItem('access_token')
-    const router = useRouter()
     router.push({ name: 'login' })
   }
 

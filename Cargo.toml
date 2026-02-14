@@ -4,6 +4,7 @@ members = [
     "crates/config",
     "crates/db",
     "crates/services",
+    "crates/transcription",
     "crates/api",
     "crates/tests",
 ]
@@ -83,6 +84,10 @@ anyhow = "1"
 
 # Env
 dotenvy = "0.15"
+
+# Transcription
+audiopus = "0.3.0-rc.0"
+rubato = "1"
 
 # Misc
 rand = "0.9"

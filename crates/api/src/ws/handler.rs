@@ -189,6 +189,9 @@ async fn handle_client_message(state: &AppState, user_id: &ObjectId, connection_
         "media:leave" => {
             handle_media_leave(state, user_id, connection_id, data).await;
         }
+        "media:transcript_toggle" => {
+            handle_transcript_toggle(state, user_id, connection_id, data).await;
+        }
         _ => {
             debug!(?user_id, msg_type, "Unknown WS message type");
         }
@@ -454,6 +457,15 @@ async fn handle_media_produce(
                     super::dispatcher::send_to_connection(&state.ws_storage, conn_id, &event).await;
                 }
             }
+
+            // Auto-start transcription pipeline if transcription is enabled for this conference
+            if matches!(kind, MediaKind::Audio) {
+                if let Some(engine) = &state.transcription_engine {
+                    if engine.is_enabled(&confid).await {
+                        start_transcription_pipeline(state, &confid, producer_id, *user_id, connection_id).await;
+                    }
+                }
+            }
         }
         Err(e) => {
             send_media_error(state, user_id, &format!("produce failed: {}", e)).await;
@@ -575,6 +587,12 @@ async fn handle_media_producer_close(
         .room_manager
         .close_producer(&confid, connection_id, &producer_id)
     {
+        // Stop transcription pipeline for this producer
+        if let Some(engine) = &state.transcription_engine {
+            engine.stop_producer(&confid, &producer_id.to_string());
+        }
+        state.room_manager.remove_rtp_tap(&confid, &producer_id.to_string());
+
         // Notify other connections (excluding this connection)
         let other_conns = state
             .room_manager
@@ -593,6 +611,170 @@ async fn handle_media_producer_close(
             }
         }
     }
+}
+
+/// Handle media:transcript_toggle — enable/disable transcription for a conference
+async fn handle_transcript_toggle(
+    state: &AppState,
+    _user_id: &ObjectId,
+    connection_id: &str,
+    data: Option<&serde_json::Value>,
+) {
+    let data = match data {
+        Some(d) => d,
+        None => return,
+    };
+
+    let conference_id_str = match data.get("conference_id").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return,
+    };
+    let enabled = data.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let model = data.get("model")
+        .and_then(|v| v.as_str())
+        .and_then(|s| match s {
+            "whisper" | "canary" => Some(s.to_string()),
+            _ => None,
+        });
+
+    if let Some(ref m) = model {
+        info!(%connection_id, %m, "transcript_toggle model requested");
+    }
+
+    let confid = match ObjectId::parse_str(conference_id_str) {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+
+    // Start/stop transcription pipelines if engine is available
+    if let Some(engine) = &state.transcription_engine {
+        if enabled {
+            let model_name = model.as_deref().unwrap_or("whisper").to_string();
+            engine.enable_conference(confid, model_name).await;
+
+            // Start pipelines for all existing audio producers in the room
+            let all_producers = state.room_manager.get_producer_ids(&confid, "");
+            for (uid, conn_id, pid, kind, _source) in all_producers {
+                if matches!(kind, MediaKind::Audio) {
+                    start_transcription_pipeline(state, &confid, pid, uid, &conn_id).await;
+                }
+            }
+
+            // Spawn transcript broadcast task for this conference
+            let engine_clone = engine.clone();
+            let ws_storage = state.ws_storage.clone();
+            let room_manager = state.room_manager.clone();
+            let conf_id = confid;
+            tokio::spawn(async move {
+                let mut rx = engine_clone.subscribe();
+                info!(%conf_id, "Transcript broadcast task started");
+                while let Ok(event) = rx.recv().await {
+                    if event.conference_id != conf_id {
+                        continue;
+                    }
+                    // Check if still enabled
+                    if !engine_clone.is_enabled(&conf_id).await {
+                        break;
+                    }
+
+                    info!(
+                        text = %event.text,
+                        speaker = %event.speaker_name,
+                        "Broadcasting transcript to WS clients"
+                    );
+
+                    let msg = serde_json::json!({
+                        "type": "media:transcript",
+                        "data": {
+                            "user_id": event.user_id.to_hex(),
+                            "speaker_name": event.speaker_name,
+                            "text": event.text,
+                            "language": event.language,
+                            "confidence": event.confidence,
+                            "start_time": event.start_time,
+                            "end_time": event.end_time,
+                            "inference_duration_ms": event.inference_duration_ms,
+                        }
+                    });
+
+                    // Broadcast to all connections in the conference
+                    let conn_ids = room_manager.get_other_connection_ids(&conf_id, "");
+                    info!(count = conn_ids.len(), "Transcript target connections");
+                    for cid in &conn_ids {
+                        super::dispatcher::send_to_connection(&ws_storage, cid, &msg).await;
+                    }
+                }
+            });
+        } else {
+            engine.disable_conference(confid).await;
+        }
+    } else {
+        warn!("Transcription engine not available — toggling UI state only (no ASR pipeline)");
+    }
+
+    // Notify all connections about the status change
+    let all_conns = state.room_manager.get_other_connection_ids(&confid, "");
+    let mut status_data = serde_json::json!({
+        "conference_id": conference_id_str,
+        "enabled": enabled,
+    });
+    if let Some(ref m) = model {
+        status_data["model"] = serde_json::json!(m);
+    }
+    let status_msg = serde_json::json!({
+        "type": "media:transcript_status",
+        "data": status_data,
+    });
+    // Also send to the toggling connection
+    super::dispatcher::send_to_connection(&state.ws_storage, connection_id, &status_msg).await;
+    for cid in &all_conns {
+        super::dispatcher::send_to_connection(&state.ws_storage, cid, &status_msg).await;
+    }
+}
+
+/// Starts a transcription pipeline for an audio producer.
+async fn start_transcription_pipeline(
+    state: &AppState,
+    conference_id: &ObjectId,
+    producer_id: ProducerId,
+    user_id: ObjectId,
+    _connection_id: &str,
+) {
+    let engine = match &state.transcription_engine {
+        Some(e) => e,
+        None => return,
+    };
+
+    // Get speaker name from participants
+    let speaker_name = match state
+        .conferences
+        .find_participant_name(*conference_id, user_id)
+        .await
+    {
+        Ok(name) => name,
+        Err(_) => user_id.to_hex()[..8].to_string(),
+    };
+
+    // Create RTP tap
+    let rtp_rx = match state
+        .room_manager
+        .create_rtp_tap(conference_id, producer_id)
+        .await
+    {
+        Ok(rx) => rx,
+        Err(e) => {
+            warn!(%e, "Failed to create RTP tap for transcription");
+            return;
+        }
+    };
+
+    engine.start_pipeline(
+        *conference_id,
+        producer_id.to_string(),
+        user_id,
+        speaker_name,
+        rtp_rx,
+    );
 }
 
 /// Handle media:leave — close participant media and notify peers

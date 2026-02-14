@@ -134,6 +134,9 @@ function formatSize(bytes: number): string {
 }
 
 onMounted(() => {
-  fileStore.fetchFiles(tenantId.value)
+  const channelId = channelStore.current?.id || channelStore.channels[0]?.id
+  if (channelId) {
+    fileStore.fetchFiles(tenantId.value, channelId)
+  }
 })
 </script>

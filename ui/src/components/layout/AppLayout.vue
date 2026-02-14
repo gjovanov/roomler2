@@ -57,7 +57,7 @@
       <template #append>
         <v-btn icon="mdi-magnify" size="small" />
         <v-btn icon="mdi-bell-outline" size="small" />
-        <v-menu>
+        <v-menu v-if="auth.isAuthenticated">
           <template #activator="{ props }">
             <v-btn icon v-bind="props" size="small">
               <v-avatar size="28" color="primary">

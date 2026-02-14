@@ -20,6 +20,7 @@ serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 reqwest.workspace = true
+jsonwebtoken.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 axum.workspace = true

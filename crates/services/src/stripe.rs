@@ -1,6 +1,6 @@
 use mongodb::bson::{doc, oid::ObjectId, DateTime};
 use roomler2_config::StripeSettings;
-use roomler2_db::models::tenant::{BillingInfo, Plan, SubscriptionStatus, Tenant};
+use roomler2_db::models::tenant::{BillingInfo, Plan, PlanLimits, SubscriptionStatus, Tenant};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -22,6 +22,7 @@ pub struct PlanInfo {
     pub name: String,
     pub price_cents: u32,
     pub features: Vec<String>,
+    pub limits: PlanLimits,
 }
 
 // ---- Stripe webhook event (minimal deserialization) ----------------------
@@ -267,6 +268,7 @@ impl StripeService {
                     "5K message history".into(),
                     "100 MB storage".into(),
                 ],
+                limits: Plan::Free.limits(),
             },
             PlanInfo {
                 id: "pro".into(),
@@ -280,6 +282,7 @@ impl StripeService {
                     "Video (10 participants)".into(),
                     "Cloud integrations".into(),
                 ],
+                limits: Plan::Pro.limits(),
             },
             PlanInfo {
                 id: "business".into(),
@@ -293,6 +296,7 @@ impl StripeService {
                     "Recordings".into(),
                     "Priority support".into(),
                 ],
+                limits: Plan::Business.limits(),
             },
         ]
     }

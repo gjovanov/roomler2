@@ -28,9 +28,11 @@
             <div v-for="msg in messageStore.messages" :key="msg.id" class="mb-3">
               <message-bubble
                 :message="msg"
+                :editable="msg.author_id === currentUserId"
                 @reply="openThread(msg)"
                 @react="(emoji) => handleReact(msg.id, emoji)"
                 @pin="handlePin(msg.id)"
+                @edit="(content) => handleEdit(msg.id, content)"
               />
             </div>
           </div>
@@ -39,16 +41,12 @@
         <!-- Message input -->
         <v-divider />
         <div class="pa-3">
-          <v-text-field
-            v-model="newMessage"
+          <message-editor
+            ref="messageEditorRef"
             :placeholder="$t('message.placeholder')"
-            variant="outlined"
-            density="compact"
-            hide-details
-            append-inner-icon="mdi-send"
-            @keydown.enter.exact.prevent="sendMessage"
-            @click:append-inner="sendMessage"
-            @input="handleTyping"
+            @send="sendMessage"
+            @open-emoji-picker="showEmojiPicker = true; emojiTarget = 'editor'"
+            @open-giphy-picker="showGiphyPicker = true"
           />
         </div>
       </v-col>
@@ -63,20 +61,23 @@
         <v-divider />
         <div class="flex-grow-1 overflow-y-auto pa-4">
           <div v-for="msg in messageStore.threadMessages" :key="msg.id" class="mb-2">
-            <message-bubble :message="msg" compact />
+            <message-bubble
+              :message="msg"
+              :editable="msg.author_id === currentUserId"
+              compact
+              @react="(emoji) => handleReact(msg.id, emoji)"
+              @edit="(content) => handleEdit(msg.id, content)"
+            />
           </div>
         </div>
         <v-divider />
         <div class="pa-3">
-          <v-text-field
-            v-model="threadReply"
+          <message-editor
+            ref="threadEditorRef"
             placeholder="Reply in thread..."
-            variant="outlined"
-            density="compact"
-            hide-details
-            append-inner-icon="mdi-send"
-            @keydown.enter.exact.prevent="sendThreadReply"
-            @click:append-inner="sendThreadReply"
+            @send="sendThreadReply"
+            @open-emoji-picker="showEmojiPicker = true; emojiTarget = 'thread'"
+            @open-giphy-picker="showGiphyPicker = true"
           />
         </div>
       </v-col>
@@ -94,47 +95,63 @@
         </v-list>
       </v-col>
     </v-row>
+
+    <!-- Emoji picker (shared) -->
+    <emoji-picker
+      v-model="showEmojiPicker"
+      @select="handleEmojiSelect"
+    />
+
+    <!-- Giphy picker -->
+    <giphy-picker
+      v-model="showGiphyPicker"
+      @select="handleGiphySelect"
+    />
   </v-container>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { useChannelStore } from '@/stores/channels'
 import { useMessageStore } from '@/stores/messages'
 import { useWsStore } from '@/stores/ws'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
+import MessageEditor from '@/components/chat/MessageEditor.vue'
+import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import GiphyPicker from '@/components/chat/GiphyPicker.vue'
 
 const route = useRoute()
+const authStore = useAuthStore()
 const channelStore = useChannelStore()
 const messageStore = useMessageStore()
 const wsStore = useWsStore()
 
+const currentUserId = computed(() => authStore.user?.id)
+
 const tenantId = computed(() => route.params.tenantId as string)
 const channelId = computed(() => route.params.channelId as string)
 
-const newMessage = ref('')
-const threadReply = ref('')
 const activeThread = ref<{ id: string } | null>(null)
 const showPinned = ref(false)
 const showMembers = ref(false)
+const showEmojiPicker = ref(false)
+const showGiphyPicker = ref(false)
+const emojiTarget = ref<'editor' | 'thread'>('editor')
 const messageListRef = ref<HTMLElement | null>(null)
+const messageEditorRef = ref<InstanceType<typeof MessageEditor> | null>(null)
+const threadEditorRef = ref<InstanceType<typeof MessageEditor> | null>(null)
 
-let typingTimeout: ReturnType<typeof setTimeout> | null = null
-
-async function sendMessage() {
-  const content = newMessage.value.trim()
+async function sendMessage(content: string) {
   if (!content) return
-  newMessage.value = ''
   await messageStore.sendMessage(tenantId.value, channelId.value, content)
   await nextTick()
   scrollToBottom()
 }
 
-async function sendThreadReply() {
-  const content = threadReply.value.trim()
+async function sendThreadReply(content: string) {
   if (!content || !activeThread.value) return
-  threadReply.value = ''
   await messageStore.sendMessage(tenantId.value, channelId.value, content, activeThread.value.id)
 }
 
@@ -144,19 +161,27 @@ function openThread(msg: { id: string }) {
 }
 
 async function handleReact(messageId: string, emoji: string) {
-  await messageStore.addReaction(tenantId.value, channelId.value, messageId, emoji)
+  await messageStore.toggleReaction(tenantId.value, channelId.value, messageId, emoji)
 }
 
 async function handlePin(messageId: string) {
   await messageStore.togglePin(tenantId.value, channelId.value, messageId)
 }
 
-function handleTyping() {
-  if (typingTimeout) clearTimeout(typingTimeout)
-  wsStore.sendTyping(channelId.value)
-  typingTimeout = setTimeout(() => {
-    wsStore.send('typing:stop', { channel_id: channelId.value })
-  }, 3000)
+async function handleEdit(messageId: string, content: string) {
+  await messageStore.editMessage(tenantId.value, channelId.value, messageId, content)
+}
+
+function handleEmojiSelect(emoji: string) {
+  const target = emojiTarget.value === 'thread' ? threadEditorRef.value : messageEditorRef.value
+  target?.insertContent(emoji)
+  showEmojiPicker.value = false
+}
+
+function handleGiphySelect(url: string) {
+  const editorRef = activeThread.value ? threadEditorRef.value : messageEditorRef.value
+  editorRef?.insertContent(`![GIF](${url})`)
+  showGiphyPicker.value = false
 }
 
 function scrollToBottom() {

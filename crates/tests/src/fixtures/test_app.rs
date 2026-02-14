@@ -282,5 +282,23 @@ fn test_settings() -> Settings {
             price_pro: String::new(),
             price_business: String::new(),
         },
+        giphy: roomler2_config::GiphySettings {
+            api_key: String::new(),
+        },
+        transcription: roomler2_config::TranscriptionSettings {
+            enabled: false,
+            backend: "local_whisper".to_string(),
+            whisper_model_path: None,
+            language: None,
+            vad_model_path: None,
+            vad_start_threshold: 0.5,
+            vad_end_threshold: 0.35,
+            vad_min_speech_frames: 3,
+            vad_min_silence_frames: 15,
+            vad_pre_speech_pad_frames: 10,
+            max_speech_duration_secs: 30.0,
+            nim_endpoint: None,
+            onnx_model_path: None,
+        },
     }
 }

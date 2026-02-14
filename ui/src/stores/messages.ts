@@ -25,6 +25,8 @@ export const useMessageStore = defineStore('messages', () => {
   const messages = ref<Message[]>([])
   const threadMessages = ref<Message[]>([])
   const loading = ref(false)
+  // Track which emojis the current user has reacted with per message: { message_id: Set<emoji> }
+  const userReactions = ref<Record<string, Set<string>>>({})
 
   async function fetchMessages(tenantId: string, channelId: string) {
     loading.value = true
@@ -70,6 +72,53 @@ export const useMessageStore = defineStore('messages', () => {
     await api.post(`/tenant/${tenantId}/channel/${channelId}/message/${messageId}/reaction`, {
       emoji,
     })
+    // Track locally
+    if (!userReactions.value[messageId]) {
+      userReactions.value[messageId] = new Set()
+    }
+    userReactions.value[messageId].add(emoji)
+  }
+
+  async function removeReaction(tenantId: string, channelId: string, messageId: string, emoji: string) {
+    await api.delete(`/tenant/${tenantId}/channel/${channelId}/message/${messageId}/reaction/${encodeURIComponent(emoji)}`)
+    userReactions.value[messageId]?.delete(emoji)
+  }
+
+  function hasUserReacted(messageId: string, emoji: string): boolean {
+    return userReactions.value[messageId]?.has(emoji) ?? false
+  }
+
+  async function toggleReaction(tenantId: string, channelId: string, messageId: string, emoji: string) {
+    if (hasUserReacted(messageId, emoji)) {
+      await removeReaction(tenantId, channelId, messageId, emoji)
+    } else {
+      await addReaction(tenantId, channelId, messageId, emoji)
+    }
+  }
+
+  function handleReactionFromWs(data: { action: string; message_id: string; emoji: string; user_id: string }) {
+    const updateList = (list: Message[]) => {
+      const msg = list.find((m) => m.id === data.message_id)
+      if (!msg) return
+      if (data.action === 'add') {
+        const existing = msg.reaction_summary.find((r) => r.emoji === data.emoji)
+        if (existing) {
+          existing.count++
+        } else {
+          msg.reaction_summary.push({ emoji: data.emoji, count: 1 })
+        }
+      } else if (data.action === 'remove') {
+        const existing = msg.reaction_summary.find((r) => r.emoji === data.emoji)
+        if (existing) {
+          existing.count--
+          if (existing.count <= 0) {
+            msg.reaction_summary = msg.reaction_summary.filter((r) => r.emoji !== data.emoji)
+          }
+        }
+      }
+    }
+    updateList(messages.value)
+    updateList(threadMessages.value)
   }
 
   async function togglePin(tenantId: string, channelId: string, messageId: string) {
@@ -103,7 +152,12 @@ export const useMessageStore = defineStore('messages', () => {
     sendMessage,
     editMessage,
     deleteMessage,
+    userReactions,
     addReaction,
+    removeReaction,
+    toggleReaction,
+    hasUserReacted,
+    handleReactionFromWs,
     togglePin,
     fetchThread,
     addMessageFromWs,

@@ -9,7 +9,9 @@ export function useAuth() {
   onMounted(async () => {
     if (auth.token) {
       await auth.fetchMe()
-      ws.connect(auth.token)
+      if (auth.user) {
+        ws.connect(auth.token!)
+      }
     }
   })
 

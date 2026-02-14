@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useConferenceStore } from './conference'
 import { useMessageStore } from './messages'
 import { useTaskStore } from './tasks'
 
@@ -63,6 +64,7 @@ export const useWsStore = defineStore('ws', () => {
   }
 
   function handleMessage(msg: { type: string; data?: unknown }) {
+    const conferenceStore = useConferenceStore()
     const messageStore = useMessageStore()
     const taskStore = useTaskStore()
 
@@ -85,6 +87,25 @@ export const useWsStore = defineStore('ws', () => {
       case 'message:create':
         messageStore.addMessageFromWs(msg.data as never)
         break
+      case 'message:reaction':
+        messageStore.handleReactionFromWs(msg.data as never)
+        break
+      case 'conference:message:create':
+        conferenceStore.addChatMessageFromWs(msg.data as never)
+        break
+      case 'media:transcript':
+        conferenceStore.addTranscriptFromWs(msg.data as never)
+        break
+      case 'media:transcript_status': {
+        const tsData = msg.data as { enabled?: boolean; model?: string } | undefined
+        if (tsData && typeof tsData.enabled === 'boolean') {
+          conferenceStore.setTranscriptionEnabled(tsData.enabled)
+        }
+        if (tsData?.model === 'whisper' || tsData?.model === 'canary') {
+          conferenceStore.setSelectedTranscriptionModel(tsData.model)
+        }
+        break
+      }
       case 'task:update':
         taskStore.updateFromWs(msg.data as never)
         break

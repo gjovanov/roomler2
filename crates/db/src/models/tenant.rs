@@ -122,6 +122,7 @@ impl Tenant {
     pub const COLLECTION: &'static str = "tenants";
 }
 
+#[derive(Debug, Serialize)]
 pub struct PlanLimits {
     pub max_members: u32,
     pub max_channels: u32,

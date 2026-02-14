@@ -1,7 +1,7 @@
 use mongodb::Database;
 use roomler2_config::Settings;
 use roomler2_services::{
-    AuthService, OAuthService, RecognitionService, TaskService,
+    AuthService, GiphyService, OAuthService, RecognitionService, TaskService,
     dao::{
         channel::ChannelDao, conference::ConferenceDao, file::FileDao,
         invite::InviteDao, message::MessageDao, reaction::ReactionDao,
@@ -10,6 +10,7 @@ use roomler2_services::{
     },
     media::{room_manager::RoomManager, worker_pool::WorkerPool},
 };
+use roomler2_transcription::TranscriptionEngine;
 use std::sync::Arc;
 
 use crate::ws::storage::WsStorage;
@@ -34,6 +35,8 @@ pub struct AppState {
     pub ws_storage: Arc<WsStorage>,
     pub recognition: RecognitionService,
     pub oauth: Option<Arc<OAuthService>>,
+    pub giphy: Option<Arc<GiphyService>>,
+    pub transcription_engine: Option<Arc<TranscriptionEngine>>,
 }
 
 impl AppState {
@@ -72,6 +75,33 @@ impl AppState {
             None
         };
 
+        let giphy = if !settings.giphy.api_key.is_empty() {
+            Some(Arc::new(GiphyService::new(
+                settings.giphy.api_key.clone(),
+            )))
+        } else {
+            None
+        };
+
+        // Initialize transcription engine if enabled
+        let transcription_engine = if settings.transcription.enabled {
+            match Self::create_transcription_engine(&settings) {
+                Ok((engine, _rx)) => {
+                    tracing::info!(
+                        backend = %settings.transcription.backend,
+                        "Transcription engine initialized"
+                    );
+                    Some(engine)
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to initialize transcription engine: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             db,
             settings,
@@ -91,6 +121,94 @@ impl AppState {
             ws_storage,
             recognition,
             oauth,
+            giphy,
+            transcription_engine,
         })
+    }
+
+    /// Creates the transcription engine based on settings.
+    ///
+    /// Discovers available ASR backends based on compiled features and model file presence.
+    /// Returns the engine and a broadcast receiver for transcript events.
+    fn create_transcription_engine(
+        settings: &Settings,
+    ) -> anyhow::Result<(
+        Arc<TranscriptionEngine>,
+        tokio::sync::broadcast::Receiver<roomler2_transcription::TranscriptEvent>,
+    )> {
+        use roomler2_transcription::TranscriptionConfig;
+        use std::collections::HashMap;
+        use std::path::Path;
+
+        let config = TranscriptionConfig {
+            enabled: settings.transcription.enabled,
+            backend: settings.transcription.backend.clone(),
+            whisper_model_path: settings.transcription.whisper_model_path.clone(),
+            language: settings.transcription.language.clone(),
+            vad_model_path: settings.transcription.vad_model_path.clone(),
+            vad_start_threshold: settings.transcription.vad_start_threshold,
+            vad_end_threshold: settings.transcription.vad_end_threshold,
+            vad_min_speech_frames: settings.transcription.vad_min_speech_frames,
+            vad_min_silence_frames: settings.transcription.vad_min_silence_frames,
+            vad_pre_speech_pad_frames: settings.transcription.vad_pre_speech_pad_frames,
+            max_speech_duration_secs: settings.transcription.max_speech_duration_secs,
+            nim_endpoint: settings.transcription.nim_endpoint.clone(),
+            onnx_model_path: settings.transcription.onnx_model_path.clone(),
+        };
+
+        let mut backends: HashMap<String, Arc<dyn roomler2_transcription::AsrBackend>> =
+            HashMap::new();
+
+        // Local Whisper backend
+        if let Some(ref path) = settings.transcription.whisper_model_path {
+            if Path::new(path).exists() {
+                match roomler2_transcription::asr::local_whisper::LocalWhisperBackend::new(
+                    path,
+                    settings.transcription.language.clone(),
+                ) {
+                    Ok(backend) => {
+                        tracing::info!(path, "Whisper backend loaded");
+                        backends.insert("whisper".into(), Arc::new(backend));
+                    }
+                    Err(e) => {
+                        tracing::warn!(path, %e, "Failed to load Whisper backend");
+                    }
+                }
+            } else {
+                tracing::info!(path, "Whisper model file not found, skipping");
+            }
+        }
+
+        // Local ONNX (Canary) backend
+        if let Some(ref path) = settings.transcription.onnx_model_path {
+            if Path::new(path).exists() {
+                match roomler2_transcription::asr::local_onnx::LocalOnnxBackend::new(path) {
+                    Ok(backend) => {
+                        tracing::info!(path, "Canary ONNX backend loaded");
+                        backends.insert("canary".into(), Arc::new(backend));
+                    }
+                    Err(e) => {
+                        tracing::warn!(path, %e, "Failed to load Canary ONNX backend");
+                    }
+                }
+            } else {
+                tracing::info!(path, "Canary ONNX model directory not found, skipping");
+            }
+        }
+
+        if backends.is_empty() {
+            anyhow::bail!("No ASR backends available — check model paths and feature flags");
+        }
+
+        // Map config backend name to our key
+        let default_backend = match settings.transcription.backend.as_str() {
+            "local_whisper" => "whisper",
+            "local_onnx" => "canary",
+            other => other,
+        }
+        .to_string();
+
+        let (engine, rx) = TranscriptionEngine::new(backends, default_backend, config);
+        Ok((engine, rx))
     }
 }

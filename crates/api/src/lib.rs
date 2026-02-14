@@ -81,6 +81,11 @@ pub fn build_router(state: AppState) -> Router {
             get(routes::conference::participants),
         );
 
+    // Conference message routes (under conference)
+    let conference_message_routes = Router::new()
+        .route("/", get(routes::conference_message::list))
+        .route("/", post(routes::conference_message::create));
+
     // Recording routes (under conference)
     let recording_routes = Router::new()
         .route("/", get(routes::recording::list))
@@ -142,12 +147,18 @@ pub fn build_router(state: AppState) -> Router {
         .route("/portal", post(routes::stripe::create_portal))
         .route("/webhook", post(routes::stripe::webhook));
 
+    // Giphy proxy routes (authenticated)
+    let giphy_routes = Router::new()
+        .route("/search", get(routes::giphy::search))
+        .route("/trending", get(routes::giphy::trending));
+
     // Compose API
     let api = Router::new()
         .nest("/auth", auth_routes)
         .nest("/oauth", oauth_routes)
         .nest("/stripe", stripe_routes)
         .nest("/invite", public_invite_routes)
+        .nest("/giphy", giphy_routes)
         .nest("/tenant", tenant_routes)
         .nest("/tenant/{tenant_id}/member", member_routes)
         .nest("/tenant/{tenant_id}/invite", tenant_invite_routes)
@@ -157,6 +168,10 @@ pub fn build_router(state: AppState) -> Router {
             message_routes,
         )
         .nest("/tenant/{tenant_id}/conference", conference_routes)
+        .nest(
+            "/tenant/{tenant_id}/conference/{conference_id}/message",
+            conference_message_routes,
+        )
         .nest(
             "/tenant/{tenant_id}/conference/{conference_id}/recording",
             recording_routes,

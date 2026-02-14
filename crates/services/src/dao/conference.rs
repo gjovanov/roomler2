@@ -2,8 +2,8 @@ use bson::{doc, oid::ObjectId, DateTime};
 use mongodb::Database;
 use rand::Rng;
 use roomler2_db::models::{
-    Conference, ConferenceParticipant, ConferenceSettings, ConferenceStatus, ConferenceType,
-    ParticipantRole, ParticipantSession,
+    Conference, ConferenceChatMessage, ConferenceParticipant, ConferenceSettings, ConferenceStatus,
+    ConferenceType, ParticipantRole, ParticipantSession,
 };
 
 use super::base::{BaseDao, DaoResult, PaginatedResult, PaginationParams};
@@ -11,6 +11,7 @@ use super::base::{BaseDao, DaoResult, PaginatedResult, PaginationParams};
 pub struct ConferenceDao {
     pub base: BaseDao<Conference>,
     pub participants: BaseDao<ConferenceParticipant>,
+    pub chat_messages: BaseDao<ConferenceChatMessage>,
 }
 
 impl ConferenceDao {
@@ -18,6 +19,7 @@ impl ConferenceDao {
         Self {
             base: BaseDao::new(db, Conference::COLLECTION),
             participants: BaseDao::new(db, ConferenceParticipant::COLLECTION),
+            chat_messages: BaseDao::new(db, ConferenceChatMessage::COLLECTION),
         }
     }
 
@@ -109,6 +111,74 @@ impl ConferenceDao {
             device_type,
         };
 
+        // Check for existing active participant (has a session with no left_at)
+        let existing = self
+            .participants
+            .collection()
+            .find_one(doc! {
+                "conference_id": conference_id,
+                "user_id": user_id,
+                "sessions.left_at": null,
+            })
+            .await
+            .map_err(|e| super::base::DaoError::Mongo(e))?;
+
+        if let Some(existing) = existing {
+            // Already actively joined — add a new session entry (rejoin) but
+            // do NOT increment participant_count again.
+            let eid = existing.id.unwrap();
+            self.participants
+                .collection()
+                .update_one(
+                    doc! { "_id": eid },
+                    doc! {
+                        "$push": { "sessions": bson::to_bson(&session).unwrap() },
+                        "$set": { "updated_at": now },
+                    },
+                )
+                .await
+                .map_err(|e| super::base::DaoError::Mongo(e))?;
+
+            return self.participants.find_by_id(eid).await;
+        }
+
+        // Also check for a participant who previously left (all sessions closed)
+        let rejoining = self
+            .participants
+            .collection()
+            .find_one(doc! {
+                "conference_id": conference_id,
+                "user_id": user_id,
+            })
+            .await
+            .map_err(|e| super::base::DaoError::Mongo(e))?;
+
+        if let Some(rejoining) = rejoining {
+            // Participant existed but left — add new session and re-increment count
+            let rid = rejoining.id.unwrap();
+            self.participants
+                .collection()
+                .update_one(
+                    doc! { "_id": rid },
+                    doc! {
+                        "$push": { "sessions": bson::to_bson(&session).unwrap() },
+                        "$set": { "updated_at": now },
+                    },
+                )
+                .await
+                .map_err(|e| super::base::DaoError::Mongo(e))?;
+
+            self.base
+                .update_by_id(
+                    conference_id,
+                    doc! { "$inc": { "participant_count": 1 } },
+                )
+                .await?;
+
+            return self.participants.find_by_id(rid).await;
+        }
+
+        // Brand-new participant
         let participant = ConferenceParticipant {
             id: None,
             tenant_id,
@@ -198,6 +268,76 @@ impl ConferenceDao {
             .find_paginated(
                 doc! { "tenant_id": tenant_id },
                 Some(doc! { "created_at": -1 }),
+                params,
+            )
+            .await
+    }
+
+    pub async fn find_participant_user_ids(
+        &self,
+        conference_id: ObjectId,
+    ) -> DaoResult<Vec<ObjectId>> {
+        let participants = self
+            .participants
+            .find_many(doc! { "conference_id": conference_id }, None)
+            .await?;
+        Ok(participants
+            .into_iter()
+            .filter_map(|p| p.user_id)
+            .collect())
+    }
+
+    /// Returns the display name of a participant in a conference.
+    pub async fn find_participant_name(
+        &self,
+        conference_id: ObjectId,
+        user_id: ObjectId,
+    ) -> DaoResult<String> {
+        let participant = self
+            .participants
+            .collection()
+            .find_one(doc! {
+                "conference_id": conference_id,
+                "user_id": user_id,
+            })
+            .await
+            .map_err(|e| super::base::DaoError::Mongo(e))?;
+
+        Ok(participant
+            .map(|p| p.display_name)
+            .unwrap_or_else(|| user_id.to_hex()[..8].to_string()))
+    }
+
+    pub async fn create_chat_message(
+        &self,
+        tenant_id: ObjectId,
+        conference_id: ObjectId,
+        author_id: ObjectId,
+        display_name: String,
+        content: String,
+    ) -> DaoResult<ConferenceChatMessage> {
+        let msg = ConferenceChatMessage {
+            id: None,
+            tenant_id,
+            conference_id,
+            author_id,
+            display_name,
+            content,
+            created_at: DateTime::now(),
+        };
+        let id = self.chat_messages.insert_one(&msg).await?;
+        self.chat_messages.find_by_id(id).await
+    }
+
+    pub async fn find_chat_messages(
+        &self,
+        conference_id: ObjectId,
+        params: &PaginationParams,
+    ) -> DaoResult<PaginatedResult<ConferenceChatMessage>> {
+        self.chat_messages
+            .find_paginated(
+                doc! { "conference_id": conference_id },
+                Some(doc! { "created_at": 1 }),
                 params,
             )
             .await

@@ -16,12 +16,11 @@ export const useFileStore = defineStore('files', () => {
   const files = ref<FileEntry[]>([])
   const loading = ref(false)
 
-  async function fetchFiles(tenantId: string, channelId?: string) {
+  async function fetchFiles(tenantId: string, channelId: string) {
     loading.value = true
     try {
-      const query = channelId ? `?channel_id=${channelId}` : ''
       const data = await api.get<{ items: FileEntry[] }>(
-        `/tenant/${tenantId}/channel/file${query}`,
+        `/tenant/${tenantId}/channel/${channelId}/file`,
       )
       files.value = data.items
     } finally {

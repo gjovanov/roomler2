@@ -11,9 +11,16 @@ use std::net::IpAddr;
 use std::num::NonZero;
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tracing::{debug, info};
 
 use super::worker_pool::WorkerPool;
+
+/// Holds the DirectTransport + Consumer for an RTP tap (transcription).
+struct RtpTap {
+    _direct_transport: DirectTransport,
+    _consumer: Consumer,
+}
 
 /// A media room backed by a mediasoup Router.
 pub struct MediaRoom {
@@ -21,6 +28,8 @@ pub struct MediaRoom {
     /// Keyed by connection_id (UUID per WebSocket connection) so the same user
     /// can join from multiple tabs/devices without overwriting state.
     pub participants: DashMap<String, ParticipantMedia>,
+    /// RTP taps for transcription, keyed by producer_id string.
+    rtp_taps: DashMap<String, RtpTap>,
 }
 
 /// A producer with its source label (e.g. "camera", "screen", "audio").
@@ -124,6 +133,7 @@ impl RoomManager {
             MediaRoom {
                 router,
                 participants: DashMap::new(),
+                rtp_taps: DashMap::new(),
             },
         );
 
@@ -460,6 +470,71 @@ impl RoomManager {
     /// Returns the conference ID that a connection is currently in, if any.
     pub fn get_connection_conference(&self, connection_id: &str) -> Option<ObjectId> {
         self.connection_rooms.get(connection_id).map(|v| *v)
+    }
+
+    /// Creates a DirectTransport consumer that taps into a producer's RTP stream.
+    ///
+    /// Returns an mpsc receiver that yields raw RTP packets. The DirectTransport
+    /// and Consumer are stored internally and cleaned up when the tap is removed.
+    pub async fn create_rtp_tap(
+        &self,
+        conference_id: &ObjectId,
+        producer_id: ProducerId,
+    ) -> anyhow::Result<mpsc::Receiver<Vec<u8>>> {
+        let room = self
+            .rooms
+            .get(conference_id)
+            .ok_or_else(|| anyhow::anyhow!("Room not found"))?;
+
+        let direct_transport = room
+            .router
+            .create_direct_transport(DirectTransportOptions::default())
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create DirectTransport: {}", e))?;
+
+        // Convert RtpCapabilitiesFinalized → RtpCapabilities via serde (same JSON schema)
+        let caps_finalized = room.router.rtp_capabilities();
+        let rtp_capabilities: RtpCapabilities = serde_json::from_value(
+            serde_json::to_value(caps_finalized)
+                .map_err(|e| anyhow::anyhow!("Failed to serialize capabilities: {}", e))?,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize capabilities: {}", e))?;
+
+        let consumer_options = ConsumerOptions::new(producer_id, rtp_capabilities);
+        let consumer = direct_transport
+            .consume(consumer_options)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to consume on DirectTransport: {}", e))?;
+
+        let (tx, rx) = mpsc::channel(512);
+
+        // Register RTP callback; detach so it lives as long as the Consumer
+        consumer
+            .on_rtp(move |data: &[u8]| {
+                let _ = tx.try_send(data.to_vec());
+            })
+            .detach();
+
+        // Store to keep alive
+        room.rtp_taps.insert(
+            producer_id.to_string(),
+            RtpTap {
+                _direct_transport: direct_transport,
+                _consumer: consumer,
+            },
+        );
+
+        debug!(?conference_id, %producer_id, "RTP tap created");
+        Ok(rx)
+    }
+
+    /// Removes an RTP tap for a producer (stops the DirectTransport consumer).
+    pub fn remove_rtp_tap(&self, conference_id: &ObjectId, producer_id: &str) {
+        if let Some(room) = self.rooms.get(conference_id) {
+            if room.rtp_taps.remove(producer_id).is_some() {
+                debug!(?conference_id, %producer_id, "RTP tap removed");
+            }
+        }
     }
 
     /// Helper: creates a single WebRtcTransport on the given router.

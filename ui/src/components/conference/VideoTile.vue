@@ -1,5 +1,13 @@
 <template>
-  <v-card class="video-tile" color="grey-darken-3" elevation="2">
+  <v-card
+    class="video-tile"
+    :class="{
+      'active-speaker-border': isActiveSpeaker,
+      'compact-tile': compact,
+    }"
+    color="grey-darken-3"
+    elevation="2"
+  >
     <div class="video-container" style="aspect-ratio: 16/9; position: relative; overflow: hidden">
       <!-- Video element — always in DOM and visible so Chrome autoplay works.
            The avatar overlay covers it when there's no video track. -->
@@ -9,7 +17,8 @@
         playsinline
         :muted="isLocal"
         class="w-100 h-100"
-        style="object-fit: cover"
+        :style="{ objectFit: objectFit }"
+        :data-stream-key="streamKey"
       />
 
       <!-- Avatar overlay when video is off (positioned on top of video) -->
@@ -18,10 +27,20 @@
         class="d-flex align-center justify-center w-100 h-100 bg-grey-darken-4"
         style="position: absolute; top: 0; left: 0; z-index: 1"
       >
-        <v-avatar size="64" color="primary">
-          <span class="text-h5">{{ initial }}</span>
+        <v-avatar :size="compact ? 40 : 64" color="primary">
+          <span :class="compact ? 'text-body-2' : 'text-h5'">{{ initial }}</span>
         </v-avatar>
       </div>
+
+      <!-- Pin badge -->
+      <v-icon
+        v-if="isPinned"
+        class="pin-badge"
+        color="primary"
+        size="18"
+      >
+        mdi-pin
+      </v-icon>
 
       <!-- Muted indicator -->
       <v-icon
@@ -32,10 +51,38 @@
       >
         mdi-microphone-off
       </v-icon>
+
+      <!-- Hover action overlay -->
+      <div
+        v-if="showActions"
+        class="action-overlay d-flex align-center justify-center ga-1"
+      >
+        <v-btn
+          icon
+          size="small"
+          variant="flat"
+          color="rgba(0,0,0,0.6)"
+          @click.stop="$emit('toggle-pin', streamKey)"
+        >
+          <v-icon size="18">{{ isPinned ? 'mdi-pin-off' : 'mdi-pin' }}</v-icon>
+        </v-btn>
+        <v-btn
+          icon
+          size="small"
+          variant="flat"
+          color="rgba(0,0,0,0.6)"
+          @click.stop="$emit('request-pip', streamKey)"
+        >
+          <v-icon size="18">mdi-picture-in-picture-bottom-right</v-icon>
+        </v-btn>
+      </div>
     </div>
 
     <!-- Name label -->
-    <v-card-text class="pa-2 text-caption text-center text-truncate">
+    <v-card-text
+      class="pa-2 text-caption text-center text-truncate"
+      :class="{ 'py-1': compact }"
+    >
       {{ displayName }}{{ isLocal ? ' (You)' : '' }}
     </v-card-text>
   </v-card>
@@ -44,11 +91,29 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   stream: MediaStream | null
   displayName: string
   isMuted: boolean
   isLocal: boolean
+  isPinned?: boolean
+  isActiveSpeaker?: boolean
+  objectFit?: 'cover' | 'contain'
+  compact?: boolean
+  showActions?: boolean
+  streamKey?: string
+}>(), {
+  isPinned: false,
+  isActiveSpeaker: false,
+  objectFit: 'cover',
+  compact: false,
+  showActions: false,
+  streamKey: '',
+})
+
+defineEmits<{
+  'toggle-pin': [streamKey: string]
+  'request-pip': [streamKey: string]
 }>()
 
 const videoRef = ref<HTMLVideoElement | null>(null)
@@ -177,12 +242,35 @@ onBeforeUnmount(() => {
     videoRef.value.srcObject = null
   }
 })
+
+// Expose video ref for PiP
+defineExpose({ videoRef })
 </script>
 
 <style scoped>
 .video-tile {
   border-radius: 8px;
   overflow: hidden;
+  transition: border-color 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.active-speaker-border {
+  border-color: rgb(var(--v-theme-primary));
+}
+
+.compact-tile .video-container {
+  aspect-ratio: 16/9;
+}
+
+.pin-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  padding: 2px;
+  z-index: 2;
 }
 
 .mute-indicator {
@@ -192,5 +280,22 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.6);
   border-radius: 50%;
   padding: 4px;
+  z-index: 2;
+}
+
+.action-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 3;
+}
+
+.video-container:hover .action-overlay {
+  opacity: 1;
 }
 </style>

@@ -43,6 +43,15 @@ pub enum ClientSignal {
     /// Client leaves the media room
     #[serde(rename = "media:leave")]
     MediaLeave { conference_id: String },
+
+    /// Client toggles transcription for a conference
+    #[serde(rename = "media:transcript_toggle")]
+    TranscriptToggle {
+        conference_id: String,
+        enabled: bool,
+        #[serde(default)]
+        model: Option<String>,
+    },
 }
 
 /// Server -> Client signaling messages (sent over WebSocket).
@@ -96,6 +105,27 @@ pub enum ServerSignal {
     ProducerClosed {
         producer_id: String,
         user_id: String,
+    },
+
+    /// Live transcript segment from ASR
+    #[serde(rename = "media:transcript")]
+    Transcript {
+        user_id: String,
+        speaker_name: String,
+        text: String,
+        language: Option<String>,
+        confidence: Option<f64>,
+        start_time: f64,
+        end_time: f64,
+    },
+
+    /// Transcription status changed (enabled/disabled)
+    #[serde(rename = "media:transcript_status")]
+    TranscriptStatus {
+        conference_id: String,
+        enabled: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
     },
 
     /// Error response

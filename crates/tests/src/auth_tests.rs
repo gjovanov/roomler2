@@ -1,4 +1,5 @@
 use crate::fixtures::test_app::TestApp;
+use jsonwebtoken::{EncodingKey, Header};
 use serde_json::Value;
 
 #[tokio::test]
@@ -365,4 +366,46 @@ async fn health_check_returns_ok() {
     assert_eq!(resp.status().as_u16(), 200);
     let json: Value = resp.json().await.unwrap();
     assert_eq!(json["status"], "ok");
+}
+
+#[tokio::test]
+async fn protected_endpoint_returns_401_with_expired_token() {
+    let app = TestApp::spawn().await;
+
+    // Craft an expired JWT using the test secret
+    let claims = serde_json::json!({
+        "sub": "000000000000000000000000",
+        "exp": 0, // epoch = long expired
+        "iat": 0,
+        "iss": "roomler2",
+    });
+    let expired_token = jsonwebtoken::encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(app.settings.jwt.secret.as_bytes()),
+    )
+    .expect("Failed to encode expired JWT");
+
+    let resp = app
+        .auth_get("/api/auth/me", &expired_token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn tenant_endpoint_returns_401_with_invalid_token() {
+    let app = TestApp::spawn().await;
+
+    let resp = app
+        .client
+        .get(app.url("/api/tenant"))
+        .header("Authorization", "Bearer garbage-token-value")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status().as_u16(), 401);
 }

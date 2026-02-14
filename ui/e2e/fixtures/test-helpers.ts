@@ -183,6 +183,52 @@ export async function revokeInviteViaApi(token: string, tenantId: string, invite
   return resp.json()
 }
 
+/** Send a conference chat message via the API */
+export async function sendConferenceChatViaApi(
+  token: string,
+  tenantId: string,
+  conferenceId: string,
+  content: string,
+) {
+  const resp = await fetch(
+    `${API_URL}/api/tenant/${tenantId}/conference/${conferenceId}/message`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ content }),
+    },
+  )
+  if (!resp.ok) throw new Error(`Send conference chat failed: ${resp.status}`)
+  return (await resp.json()) as {
+    id: string
+    conference_id: string
+    author_id: string
+    display_name: string
+    content: string
+    created_at: string
+  }
+}
+
+/** Join a conference via the API */
+export async function joinConferenceViaApi(
+  token: string,
+  tenantId: string,
+  conferenceId: string,
+) {
+  const resp = await fetch(
+    `${API_URL}/api/tenant/${tenantId}/conference/${conferenceId}/join`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+  if (!resp.ok) throw new Error(`Join conference failed: ${resp.status}`)
+  return (await resp.json()) as { participant_id: string; joined: boolean }
+}
+
 /** Register through the UI */
 export async function registerViaUi(
   page: Page,

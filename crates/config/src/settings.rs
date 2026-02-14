@@ -13,6 +13,8 @@ pub struct Settings {
     pub claude: ClaudeSettings,
     pub oauth: OAuthSettings,
     pub stripe: StripeSettings,
+    pub giphy: GiphySettings,
+    pub transcription: TranscriptionSettings,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -102,6 +104,28 @@ pub struct StripeSettings {
     pub price_business: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct GiphySettings {
+    pub api_key: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TranscriptionSettings {
+    pub enabled: bool,
+    pub backend: String,
+    pub whisper_model_path: Option<String>,
+    pub language: Option<String>,
+    pub vad_model_path: Option<String>,
+    pub vad_start_threshold: f32,
+    pub vad_end_threshold: f32,
+    pub vad_min_speech_frames: usize,
+    pub vad_min_silence_frames: usize,
+    pub vad_pre_speech_pad_frames: usize,
+    pub max_speech_duration_secs: f64,
+    pub nim_endpoint: Option<String>,
+    pub onnx_model_path: Option<String>,
+}
+
 impl Settings {
     pub fn load() -> Result<Self, ConfigError> {
         let config = Config::builder()
@@ -154,6 +178,18 @@ impl Settings {
             .set_default("stripe.webhook_secret", "")?
             .set_default("stripe.price_pro", "")?
             .set_default("stripe.price_business", "")?
+            .set_default("giphy.api_key", "")?
+            .set_default("transcription.enabled", false)?
+            .set_default("transcription.backend", "local_whisper")?
+            .set_default("transcription.whisper_model_path", "models/ggml-base.en.bin")?
+            .set_default("transcription.onnx_model_path", "models/canary-1b-v2")?
+            .set_default("transcription.vad_model_path", "models/silero_vad.onnx")?
+            .set_default("transcription.vad_start_threshold", 0.5)?
+            .set_default("transcription.vad_end_threshold", 0.35)?
+            .set_default("transcription.vad_min_speech_frames", 3)?
+            .set_default("transcription.vad_min_silence_frames", 15)?
+            .set_default("transcription.vad_pre_speech_pad_frames", 10)?
+            .set_default("transcription.max_speech_duration_secs", 30.0)?
             .build()?;
 
         config.try_deserialize()

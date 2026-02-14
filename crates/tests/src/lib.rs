@@ -15,6 +15,8 @@ mod reaction_tests;
 #[cfg(test)]
 mod conference_tests;
 #[cfg(test)]
+mod conference_message_tests;
+#[cfg(test)]
 mod file_tests;
 #[cfg(test)]
 mod export_tests;
