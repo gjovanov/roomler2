@@ -24,9 +24,10 @@ export async function subscribePush(): Promise<void> {
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') return
 
+    const keyArray = urlBase64ToUint8Array(config.vapid_public_key)
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(config.vapid_public_key),
+      applicationServerKey: keyArray.buffer as ArrayBuffer,
     })
 
     const json = subscription.toJSON()
