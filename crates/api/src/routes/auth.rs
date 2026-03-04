@@ -70,7 +70,7 @@ pub struct RefreshRequest {
 pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
-) -> Result<(StatusCode, HeaderMap, Json<AuthResponse>), ApiError> {
+) -> Result<(StatusCode, Json<MessageResponse>), ApiError> {
     let password_hash = state.auth.hash_password(&body.password)?;
 
     let user = state
@@ -122,44 +122,21 @@ pub async fn register(
     }
 
     // Auto-accept invite if invite_code provided
-    let invite_tenant = if let Some(ref invite_code) = body.invite_code {
+    if let Some(ref invite_code) = body.invite_code {
         match auto_accept_invite(&state, user_id, &user.email, invite_code).await {
-            Ok(tenant_info) => Some(tenant_info),
+            Ok(_) => {}
             Err(e) => {
                 warn!("Failed to auto-accept invite during registration: {:?}", e);
-                None
             }
         }
-    } else {
-        None
-    };
+    }
 
-    let tokens = state
-        .auth
-        .generate_tokens(user_id, &user.email, &user.username)?;
-
-    let mut headers = HeaderMap::new();
-    let cookie = format!(
-        "access_token={}; HttpOnly; Path=/; SameSite=Lax; Max-Age={}",
-        tokens.access_token, tokens.expires_in
-    );
-    headers.insert(header::SET_COOKIE, cookie.parse().unwrap());
-
-    let response = AuthResponse {
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        expires_in: tokens.expires_in,
-        user: UserResponse {
-            id: user_id.to_hex(),
-            email: user.email,
-            username: user.username,
-            display_name: user.display_name,
-            avatar: user.avatar,
-        },
-        invite_tenant,
-    };
-
-    Ok((StatusCode::CREATED, headers, Json(response)))
+    Ok((
+        StatusCode::CREATED,
+        Json(MessageResponse {
+            message: "Registration successful. Please check your email to activate your account.".to_string(),
+        }),
+    ))
 }
 
 pub async fn login(
@@ -183,6 +160,12 @@ pub async fn login(
     let valid = state.auth.verify_password(&body.password, password_hash)?;
     if !valid {
         return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
+    }
+
+    if !user.is_verified {
+        return Err(ApiError::Unauthorized(
+            "Account not activated. Please check your email for the activation link.".to_string(),
+        ));
     }
 
     let user_id = user.id.unwrap();
