@@ -255,8 +255,8 @@ pub async fn create(
         };
 
         let link = format!(
-            "/tenant/{}/room/{}",
-            tenant_id, room_id
+            "/tenant/{}/room/{}?msg={}",
+            tenant_id, room_id, message_id.to_hex()
         );
 
         for user_id in &mentioned_user_ids {
@@ -591,4 +591,54 @@ fn collect_author_ids(messages: &[roomler2_db::models::Message]) -> Vec<ObjectId
     ids.sort();
     ids.dedup();
     ids
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MarkReadRequest {
+    pub message_ids: Vec<String>,
+}
+
+pub async fn mark_read(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((tenant_id, room_id)): Path<(String, String)>,
+    Json(body): Json<MarkReadRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let tid = ObjectId::parse_str(&tenant_id)
+        .map_err(|_| ApiError::BadRequest("Invalid tenant_id".to_string()))?;
+    let rid = ObjectId::parse_str(&room_id)
+        .map_err(|_| ApiError::BadRequest("Invalid room_id".to_string()))?;
+
+    if !state.tenants.is_member(tid, auth.user_id).await? {
+        return Err(ApiError::Forbidden("Not a member".to_string()));
+    }
+
+    let message_ids: Vec<ObjectId> = body
+        .message_ids
+        .iter()
+        .filter_map(|s| ObjectId::parse_str(s).ok())
+        .collect();
+
+    let modified = state.messages.mark_read(rid, auth.user_id, &message_ids).await?;
+
+    Ok(Json(serde_json::json!({ "marked": modified })))
+}
+
+pub async fn unread_count(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((tenant_id, room_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let tid = ObjectId::parse_str(&tenant_id)
+        .map_err(|_| ApiError::BadRequest("Invalid tenant_id".to_string()))?;
+    let rid = ObjectId::parse_str(&room_id)
+        .map_err(|_| ApiError::BadRequest("Invalid room_id".to_string()))?;
+
+    if !state.tenants.is_member(tid, auth.user_id).await? {
+        return Err(ApiError::Forbidden("Not a member".to_string()));
+    }
+
+    let count = state.messages.unread_count(rid, auth.user_id).await?;
+
+    Ok(Json(serde_json::json!({ "count": count })))
 }

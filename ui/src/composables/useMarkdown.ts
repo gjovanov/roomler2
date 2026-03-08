@@ -2,7 +2,7 @@ import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 
 const md = new MarkdownIt({
-  html: false,
+  html: true,
   breaks: true,
   linkify: true,
 })
@@ -36,6 +36,7 @@ const ALLOWED_TAGS = [
   'li',
   'a',
   'img',
+  'span',
   'h1',
   'h2',
   'h3',
@@ -51,10 +52,18 @@ const ALLOWED_TAGS = [
   'td',
 ]
 
-const ALLOWED_ATTR = ['href', 'target', 'rel', 'src', 'alt', 'title', 'class']
+const ALLOWED_ATTR = ['href', 'target', 'rel', 'src', 'alt', 'title', 'class', 'data-mention-id']
+
+// Convert @[Name](id) mention syntax to styled HTML spans
+function preprocessMentions(content: string): string {
+  return content.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, id) => {
+    return `<span class="mention" data-mention-id="${id}">@${label}</span>`
+  })
+}
 
 export function renderMarkdown(content: string): string {
-  const raw = md.render(content)
+  const processed = preprocessMentions(content)
+  const raw = md.render(processed)
   return DOMPurify.sanitize(raw, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,

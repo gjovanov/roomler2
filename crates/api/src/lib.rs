@@ -77,7 +77,9 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/{message_id}/reaction/{emoji}",
             delete(routes::reaction::remove),
-        );
+        )
+        .route("/read", post(routes::message::mark_read))
+        .route("/unread-count", get(routes::message::unread_count));
 
     // Recording routes (under room)
     let recording_routes = Router::new()

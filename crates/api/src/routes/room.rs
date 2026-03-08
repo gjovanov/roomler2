@@ -426,7 +426,7 @@ pub async fn call_join(
             "data": {
                 "room_id": rid.to_hex(),
                 "participant_count": participant_count,
-                "conference_status": "InProgress",
+                "conference_status": "in_progress",
             }
         });
         crate::ws::dispatcher::broadcast(&state.ws_storage, &member_ids, &event).await;

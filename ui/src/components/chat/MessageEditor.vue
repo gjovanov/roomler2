@@ -156,6 +156,22 @@ import Link from '@tiptap/extension-link'
 import Underline from '@tiptap/extension-underline'
 import Mention from '@tiptap/extension-mention'
 import { Markdown } from 'tiptap-markdown'
+
+// Extend Mention to serialize as @[label](id) in markdown output
+const MentionWithMarkdown = Mention.extend({
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: { write: (s: string) => void }, node: { attrs: { label?: string; id?: string } }) {
+          const label = node.attrs.label || node.attrs.id || ''
+          const id = node.attrs.id || ''
+          state.write(`@[${label}](${id})`)
+        },
+        parse: {},
+      },
+    }
+  },
+})
 import tippy, { type Instance as TippyInstance } from 'tippy.js'
 import MentionList from './MentionList.vue'
 import type { MentionItem } from './MentionList.vue'
@@ -278,7 +294,7 @@ const editor = useEditor({
     Link.configure({ openOnClick: false, autolink: true }),
     Underline,
     Markdown.configure({ html: false, transformPastedText: true }),
-    Mention.configure({
+    MentionWithMarkdown.configure({
       HTMLAttributes: {
         class: 'mention',
       },

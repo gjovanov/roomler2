@@ -34,6 +34,8 @@ pub struct Message {
     pub is_edited: bool,
     pub edited_at: Option<DateTime>,
     pub nonce: Option<String>,
+    #[serde(default)]
+    pub readby: Vec<ObjectId>,
     pub created_at: DateTime,
     pub updated_at: DateTime,
     pub deleted_at: Option<DateTime>,

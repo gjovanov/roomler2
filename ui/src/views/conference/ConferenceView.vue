@@ -1,7 +1,7 @@
 <template>
-  <v-container fluid class="fill-height pa-0">
-    <v-row no-gutters class="fill-height">
-      <v-col class="d-flex flex-column fill-height">
+  <v-container fluid class="fill-height pa-0" style="overflow: hidden;">
+    <v-row no-gutters class="fill-height" style="overflow: hidden;">
+      <v-col class="d-flex flex-column" style="height: 100%; min-height: 0; overflow: hidden;">
         <!-- Call header -->
         <v-toolbar density="compact" flat>
           <v-toolbar-title>
@@ -104,6 +104,7 @@
                   :message="msg"
                   :editable="msg.author_id === currentUserId"
                   compact
+                  @reply="handleReplyInChat(msg)"
                   @react="(emoji) => handleReact(msg.id, emoji)"
                   @edit="(content) => handleEdit(msg.id, content)"
                   @delete="handleDelete(msg.id)"
@@ -118,6 +119,7 @@
               <MessageEditor
                 ref="chatEditorRef"
                 :placeholder="$t('call.chatPlaceholder')"
+                :members="roomMembers"
                 :tenant-id="tenantId"
                 :room-id="roomId"
                 @send="handleSendChat"
@@ -190,6 +192,8 @@ import LayoutSwitcher from '@/components/conference/LayoutSwitcher.vue'
 import ConferenceFilesPanel from '@/components/conference/ConferenceFilesPanel.vue'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
 import MessageEditor from '@/components/chat/MessageEditor.vue'
+import type { MentionData } from '@/components/chat/MessageEditor.vue'
+import type { MentionItem } from '@/components/chat/MentionList.vue'
 import TiledLayout from '@/components/conference/layouts/TiledLayout.vue'
 import SpotlightLayout from '@/components/conference/layouts/SpotlightLayout.vue'
 import SidebarLayout from '@/components/conference/layouts/SidebarLayout.vue'
@@ -219,8 +223,24 @@ const showFiles = ref(false)
 const showSwitchDialog = ref(false)
 const chatEditorRef = ref<InstanceType<typeof MessageEditor> | null>(null)
 const chatListRef = ref<HTMLElement | null>(null)
+const roomMembers = ref<MentionItem[]>([])
 
 const currentUserId = computed(() => authStore.user?.id)
+
+async function fetchRoomMembers() {
+  if (!tenantId.value || !roomId.value) return
+  try {
+    const members = await roomStore.fetchMembers(tenantId.value, roomId.value)
+    roomMembers.value = members.map((m) => ({
+      id: m.id,
+      user_id: m.user_id,
+      display_name: m.display_name,
+      username: m.username,
+    }))
+  } catch {
+    // members list not critical
+  }
+}
 
 const localDisplayName = computed(() => authStore.user?.display_name ?? 'You')
 
@@ -298,9 +318,9 @@ function togglePiP() {
 
 const statusColor = computed(() => {
   switch (roomStore.current?.conference_status) {
-    case 'InProgress': return 'success'
-    case 'Scheduled': return 'info'
-    case 'Ended': return 'grey'
+    case 'in_progress': return 'success'
+    case 'scheduled': return 'info'
+    case 'ended': return 'grey'
     default: return 'warning'
   }
 })
@@ -325,13 +345,21 @@ watch(
   },
 )
 
-async function handleSendChat(content: string) {
-  if (!content) return
+async function handleSendChat(content: string, mentions?: MentionData, attachmentIds?: string[]) {
+  if (!content && (!attachmentIds || attachmentIds.length === 0)) return
   try {
-    await messageStore.sendMessage(tenantId.value, roomId.value, content)
+    await messageStore.sendMessage(tenantId.value, roomId.value, content, undefined, mentions, attachmentIds)
   } catch (err) {
     console.error('Failed to send chat message:', err)
   }
+}
+
+function handleReplyInChat(msg: { id: string; author_name: string; content: string }) {
+  // Quote the message content as a reply
+  const quote = msg.content.split('\n').map((l) => `> ${l}`).join('\n')
+  const replyPrefix = `> **${msg.author_name}**:\n${quote}\n\n`
+  chatEditorRef.value?.setContent(replyPrefix)
+  chatEditorRef.value?.focus()
 }
 
 async function handleReact(messageId: string, emoji: string) {
@@ -392,6 +420,7 @@ async function doJoin() {
     await conferenceStore.joinRoom(tenantId.value, roomId.value, rName)
     await conferenceStore.produceLocalMedia()
     await roomStore.fetchParticipants(tenantId.value, roomId.value)
+    fetchRoomMembers()
     messageStore.fetchMessages(tenantId.value, roomId.value).catch(() => {})
 
     joined.value = true
@@ -464,6 +493,7 @@ onMounted(async () => {
     showChat.value = true
     conferenceStore.startActiveSpeaker()
     wsStore.onMediaMessage('media:audio_playback', audioPlayback.handlePlaybackMessage)
+    fetchRoomMembers()
     messageStore.fetchMessages(tenantId.value, roomId.value).catch(() => {})
     await roomStore.fetchParticipants(tenantId.value, roomId.value)
   }

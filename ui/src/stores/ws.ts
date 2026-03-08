@@ -87,9 +87,18 @@ export const useWsStore = defineStore('ws', () => {
     }
 
     switch (msg.type) {
-      case 'message:create':
+      case 'message:create': {
         messageStore.addMessageFromWs(msg.data as never)
+        // Increment unread count if user is not viewing this room
+        const msgData = msg.data as { room_id?: string }
+        if (msgData.room_id) {
+          const roomStore = useRoomStore()
+          if (roomStore.current?.id !== msgData.room_id) {
+            roomStore.incrementUnread(msgData.room_id)
+          }
+        }
         break
+      }
       case 'message:update':
         messageStore.updateMessageFromWs(msg.data as never)
         break
@@ -116,7 +125,7 @@ export const useWsStore = defineStore('ws', () => {
       }
       case 'room:call_started': {
         const csData = msg.data as { room_id: string; room_name: string; started_by: string }
-        roomStore.updateRoomCallStatus(csData.room_id, 'InProgress')
+        roomStore.updateRoomCallStatus(csData.room_id, 'in_progress')
         window.dispatchEvent(new CustomEvent('room:call_started', { detail: csData }))
         break
       }

@@ -49,7 +49,7 @@ pub async fn export_conversation(
 
     state.tasks.spawn_task(task_id, async move {
         // Fetch all messages in room (up to 10000)
-        let params = PaginationParams { page: 1, per_page: 10000 };
+        let params = PaginationParams { page: 1, per_page: 10000, before: None };
         let result = messages_dao
             .find_in_room(rid, &params)
             .await

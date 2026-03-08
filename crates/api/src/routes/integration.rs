@@ -153,6 +153,7 @@ pub async fn export_conversation_pdf(
         let params = roomler2_services::dao::base::PaginationParams {
             page: 1,
             per_page: 10000,
+            before: None,
         };
         let result = messages_dao
             .find_in_room(rid, &params)

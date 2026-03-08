@@ -46,18 +46,41 @@ export const useMessageStore = defineStore('messages', () => {
   const messages = ref<Message[]>([])
   const threadMessages = ref<Message[]>([])
   const loading = ref(false)
+  const loadingMore = ref(false)
+  const hasMore = ref(true)
+  const PAGE_SIZE = 25
   // Track which emojis the current user has reacted with per message: { message_id: Set<emoji> }
   const userReactions = ref<Record<string, Set<string>>>({})
 
   async function fetchMessages(tenantId: string, roomId: string) {
     loading.value = true
+    hasMore.value = true
     try {
-      const data = await api.get<{ items: Message[] }>(
-        `/tenant/${tenantId}/room/${roomId}/message`,
+      const data = await api.get<{ items: Message[]; total: number }>(
+        `/tenant/${tenantId}/room/${roomId}/message?per_page=${PAGE_SIZE}`,
       )
       messages.value = data.items
+      hasMore.value = data.items.length < data.total
     } finally {
       loading.value = false
+    }
+  }
+
+  async function fetchOlderMessages(tenantId: string, roomId: string) {
+    if (loadingMore.value || !hasMore.value || messages.value.length === 0) return
+    loadingMore.value = true
+    try {
+      const oldest = messages.value[0]
+      const data = await api.get<{ items: Message[]; total: number }>(
+        `/tenant/${tenantId}/room/${roomId}/message?per_page=${PAGE_SIZE}&before=${oldest.created_at}`,
+      )
+      if (data.items.length === 0) {
+        hasMore.value = false
+      } else {
+        messages.value = [...data.items, ...messages.value]
+      }
+    } finally {
+      loadingMore.value = false
     }
   }
 
@@ -223,7 +246,10 @@ export const useMessageStore = defineStore('messages', () => {
     messages,
     threadMessages,
     loading,
+    loadingMore,
+    hasMore,
     fetchMessages,
+    fetchOlderMessages,
     sendMessage,
     editMessage,
     deleteMessage,

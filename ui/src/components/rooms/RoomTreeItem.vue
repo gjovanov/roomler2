@@ -17,7 +17,7 @@
 
       <template #append>
         <v-badge
-          v-if="room.conference_status === 'InProgress'"
+          v-if="room.conference_status === 'in_progress'"
           dot
           color="success"
           class="mr-1"

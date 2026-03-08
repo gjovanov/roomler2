@@ -30,6 +30,9 @@ pub struct PaginationParams {
     pub page: u64,
     #[serde(default = "default_per_page")]
     pub per_page: u64,
+    /// ISO 8601 timestamp — return only items created before this date
+    #[serde(default)]
+    pub before: Option<String>,
 }
 
 impl Default for PaginationParams {
@@ -37,6 +40,7 @@ impl Default for PaginationParams {
         Self {
             page: default_page(),
             per_page: default_per_page(),
+            before: None,
         }
     }
 }

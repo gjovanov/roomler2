@@ -74,6 +74,7 @@ impl MessageDao {
             is_edited: false,
             edited_at: None,
             nonce,
+            readby: vec![author_id], // Author has read their own message
             created_at: now,
             updated_at: now,
             deleted_at: None,
@@ -94,9 +95,18 @@ impl MessageDao {
         room_id: ObjectId,
         params: &PaginationParams,
     ) -> DaoResult<PaginatedResult<Message>> {
+        let mut filter = doc! { "room_id": room_id, "deleted_at": null, "thread_id": null };
+
+        // Support cursor-based pagination via `before` timestamp
+        if let Some(ref before) = params.before {
+            if let Ok(dt) = bson::DateTime::parse_rfc3339_str(before) {
+                filter.insert("created_at", doc! { "$lt": dt });
+            }
+        }
+
         self.base
             .find_paginated(
-                doc! { "room_id": room_id, "deleted_at": null, "thread_id": null },
+                filter,
                 Some(doc! { "created_at": -1 }),
                 params,
             )
@@ -193,6 +203,82 @@ impl MessageDao {
                 },
             )
             .await
+    }
+
+    /// Mark messages in a room as read by a user
+    pub async fn mark_read(
+        &self,
+        room_id: ObjectId,
+        user_id: ObjectId,
+        message_ids: &[ObjectId],
+    ) -> DaoResult<u64> {
+        let result = self
+            .base
+            .collection()
+            .update_many(
+                doc! {
+                    "_id": { "$in": message_ids },
+                    "room_id": room_id,
+                    "readby": { "$ne": user_id },
+                },
+                doc! { "$addToSet": { "readby": user_id } },
+            )
+            .await?;
+        Ok(result.modified_count)
+    }
+
+    /// Count unread messages for a user in a room
+    pub async fn unread_count(
+        &self,
+        room_id: ObjectId,
+        user_id: ObjectId,
+    ) -> DaoResult<u64> {
+        let count = self
+            .base
+            .collection()
+            .count_documents(doc! {
+                "room_id": room_id,
+                "deleted_at": null,
+                "thread_id": null,
+                "readby": { "$ne": user_id },
+            })
+            .await?;
+        Ok(count)
+    }
+
+    /// Count unread messages for a user across multiple rooms
+    pub async fn unread_counts_by_room(
+        &self,
+        room_ids: &[ObjectId],
+        user_id: ObjectId,
+    ) -> DaoResult<Vec<(ObjectId, u64)>> {
+        use bson::Bson;
+        use futures::TryStreamExt;
+
+        let pipeline = vec![
+            doc! { "$match": {
+                "room_id": { "$in": room_ids.iter().map(|id| Bson::ObjectId(*id)).collect::<Vec<_>>() },
+                "deleted_at": null,
+                "thread_id": null,
+                "readby": { "$ne": user_id },
+            }},
+            doc! { "$group": {
+                "_id": "$room_id",
+                "count": { "$sum": 1 },
+            }},
+        ];
+
+        let mut cursor = self.base.collection().aggregate(pipeline).await?;
+        let mut results = Vec::new();
+        while let Some(doc) = cursor.try_next().await? {
+            if let (Some(room_id), Some(count)) = (
+                doc.get_object_id("_id").ok(),
+                doc.get_i32("count").ok(),
+            ) {
+                results.push((room_id, count as u64));
+            }
+        }
+        Ok(results)
     }
 
     pub async fn update_reaction_summary(

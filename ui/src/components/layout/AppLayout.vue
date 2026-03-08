@@ -38,6 +38,29 @@
         />
       </v-list>
 
+      <!-- Rooms with unread badges -->
+      <v-divider v-if="!rail && roomStore.rooms.length > 0" />
+      <v-list v-if="!rail && roomStore.rooms.length > 0" density="compact" nav>
+        <v-list-subheader>Rooms</v-list-subheader>
+        <v-list-item
+          v-for="room in roomStore.rooms"
+          :key="room.id"
+          :to="`/tenant/${tenantId}/room/${room.id}`"
+          :title="room.name"
+          :prepend-icon="room.has_media ? 'mdi-video' : 'mdi-pound'"
+          density="compact"
+        >
+          <template #append>
+            <v-badge
+              v-if="(roomStore.unreadCounts[room.id] || 0) > 0"
+              :content="roomStore.unreadCounts[room.id]"
+              color="error"
+              inline
+            />
+          </template>
+        </v-list-item>
+      </v-list>
+
       <template #append>
         <!-- Mini conference widget (visible when in call but navigated away) -->
         <mini-conference
@@ -95,6 +118,18 @@
             />
           </v-list>
         </v-menu>
+        <!-- Unread messages indicator -->
+        <v-btn
+          v-if="roomStore.totalUnread > 0"
+          size="small"
+          variant="tonal"
+          color="error"
+          class="mr-2"
+          @click="goToFirstUnread"
+        >
+          <v-icon start>mdi-message-badge</v-icon>
+          {{ roomStore.totalUnread }}
+        </v-btn>
         <v-btn icon="mdi-magnify" size="small" />
         <v-btn
           :icon="isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
@@ -125,14 +160,14 @@
             </v-btn>
           </template>
           <v-list density="compact">
-            <v-list-item prepend-icon="mdi-account" title="Profile" />
+            <v-list-item prepend-icon="mdi-account" title="Profile" @click="goToProfile" />
             <v-list-item prepend-icon="mdi-logout" title="Logout" @click="handleLogout" />
           </v-list>
         </v-menu>
       </template>
     </v-app-bar>
 
-    <v-main>
+    <v-main class="app-main-no-scroll">
       <router-view />
     </v-main>
 
@@ -173,9 +208,23 @@ const isOnCallPage = computed(() => route.name === 'room-call')
 // Active calls across all rooms (excluding the one the user is currently in)
 const activeCallRooms = computed(() =>
   roomStore.rooms.filter(
-    (r) => r.conference_status === 'InProgress' && r.id !== conferenceStore.roomId,
+    (r) => r.conference_status === 'in_progress' && r.id !== conferenceStore.roomId,
   ),
 )
+
+function goToFirstUnread() {
+  // Navigate to the first room with unread messages
+  const roomId = Object.entries(roomStore.unreadCounts).find(([, count]) => count > 0)?.[0]
+  if (roomId && tenantId.value) {
+    router.push(`/tenant/${tenantId.value}/room/${roomId}`)
+  }
+}
+
+function goToProfile() {
+  if (auth.user?.id) {
+    router.push({ name: 'profile', params: { userId: auth.user.id } })
+  }
+}
 
 function returnToCall() {
   if (conferenceStore.tenantId && conferenceStore.roomId) {
@@ -261,10 +310,15 @@ function selectTenant(t: Tenant) {
   tenantStore.setCurrent(t as never)
 }
 
-onMounted(() => {
-  tenantStore.fetchTenants()
+onMounted(async () => {
+  await tenantStore.fetchTenants()
   notificationStore.fetchUnreadCount()
   window.addEventListener('room:call_started', onCallStarted)
+  // Fetch rooms and unread counts for current tenant
+  if (tenantId.value) {
+    await roomStore.fetchRooms(tenantId.value)
+    roomStore.fetchAllUnreadCounts(tenantId.value)
+  }
 })
 
 onUnmounted(() => {
@@ -273,6 +327,15 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.app-main-no-scroll {
+  overflow: hidden !important;
+}
+.app-main-no-scroll :deep(.v-main__wrap) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
 .call-pulse {
   animation: pulse-green 2s ease-in-out infinite;
 }

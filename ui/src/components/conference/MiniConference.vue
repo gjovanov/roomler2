@@ -13,8 +13,8 @@
       </v-btn>
     </div>
 
-    <!-- Mini video grid (max 4 tiles) -->
-    <div class="mini-grid mb-2">
+    <!-- Mini video grid (max 4 tiles) — click anywhere to return to call -->
+    <div class="mini-grid mb-2" @click="returnToCall" style="cursor: pointer;">
       <!-- Local stream -->
       <div v-if="conferenceStore.localStream" class="mini-tile">
         <video

@@ -1,8 +1,8 @@
 <template>
-  <v-container fluid class="fill-height pa-0">
-    <v-row no-gutters class="fill-height">
+  <v-container fluid class="fill-height pa-0" style="overflow: hidden;">
+    <v-row no-gutters class="fill-height" style="overflow: hidden;">
       <!-- Message list -->
-      <v-col class="d-flex flex-column fill-height">
+      <v-col class="d-flex flex-column" style="height: 100%; min-height: 0; overflow: hidden;">
         <!-- Room header -->
         <v-toolbar density="compact" flat>
           <v-toolbar-title>
@@ -34,7 +34,10 @@
         <v-divider />
 
         <!-- Messages -->
-        <div ref="messageListRef" class="flex-grow-1 overflow-y-auto pa-4">
+        <div ref="messageListRef" class="flex-grow-1 overflow-y-auto pa-4" @scroll="handleScroll">
+          <div v-if="messageStore.loadingMore" class="text-center pa-2">
+            <v-progress-circular size="20" indeterminate />
+          </div>
           <div v-if="messageStore.loading" class="text-center pa-4">
             <v-progress-circular indeterminate />
           </div>
@@ -42,7 +45,7 @@
             {{ $t('room.noMessages') }}
           </div>
           <div v-else>
-            <div v-for="msg in messageStore.messages" :key="msg.id" class="mb-3">
+            <div v-for="msg in messageStore.messages" :key="msg.id" :id="`msg-${msg.id}`" class="mb-3">
               <message-bubble
                 :message="msg"
                 :editable="msg.author_id === currentUserId"
@@ -160,7 +163,7 @@ const currentUserId = computed(() => authStore.user?.id)
 const tenantId = computed(() => route.params.tenantId as string)
 const roomId = computed(() => route.params.roomId as string)
 
-const isCallActive = computed(() => roomStore.current?.conference_status === 'InProgress')
+const isCallActive = computed(() => roomStore.current?.conference_status === 'in_progress')
 
 function goToCall() {
   router.push({ name: 'room-call', params: { tenantId: tenantId.value, roomId: roomId.value } })
@@ -243,6 +246,40 @@ function scrollToBottom() {
   }
 }
 
+async function handleScroll() {
+  if (!messageListRef.value) return
+  // Load older messages when scrolled to top
+  if (messageListRef.value.scrollTop === 0 && messageStore.hasMore && !messageStore.loadingMore) {
+    const prevHeight = messageListRef.value.scrollHeight
+    await messageStore.fetchOlderMessages(tenantId.value, roomId.value)
+    await nextTick()
+    // Preserve scroll position after prepending
+    if (messageListRef.value) {
+      messageListRef.value.scrollTop = messageListRef.value.scrollHeight - prevHeight
+    }
+  }
+}
+
+function scrollToMessage(messageId: string) {
+  nextTick(() => {
+    const el = document.getElementById(`msg-${messageId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('message-highlight')
+      setTimeout(() => el.classList.remove('message-highlight'), 3000)
+    }
+  })
+}
+
+// Auto-scroll when new messages arrive
+watch(
+  () => messageStore.messages.length,
+  async () => {
+    await nextTick()
+    scrollToBottom()
+  },
+)
+
 watch(roomId, async (id) => {
   if (id) {
     fetchRoomMembers()
@@ -252,13 +289,42 @@ watch(roomId, async (id) => {
   }
 })
 
+function markVisibleAsRead() {
+  if (!roomId.value || !tenantId.value) return
+  const unreadIds = messageStore.messages
+    .filter((m) => m.author_id !== currentUserId.value)
+    .map((m) => m.id)
+  if (unreadIds.length > 0) {
+    roomStore.markMessagesRead(tenantId.value, roomId.value, unreadIds)
+  }
+}
+
 onMounted(async () => {
   if (roomId.value) {
     roomStore.fetchRoom(tenantId.value, roomId.value)
     fetchRoomMembers()
     await messageStore.fetchMessages(tenantId.value, roomId.value)
     await nextTick()
-    scrollToBottom()
+    const targetMsg = route.query.msg as string | undefined
+    if (targetMsg) {
+      scrollToMessage(targetMsg)
+    } else {
+      scrollToBottom()
+    }
+    // Mark messages as read
+    markVisibleAsRead()
+    // Reset unread count for this room
+    roomStore.unreadCounts[roomId.value] = 0
   }
 })
 </script>
+
+<style scoped>
+.message-highlight {
+  animation: highlight-fade 3s ease-out;
+}
+@keyframes highlight-fade {
+  0% { background: rgba(var(--v-theme-primary), 0.25); }
+  100% { background: transparent; }
+}
+</style>

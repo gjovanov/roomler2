@@ -322,4 +322,11 @@ onBeforeUnmount(() => {
   border-top: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   margin: 8px 0;
 }
+.message-content :deep(.mention) {
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.1);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-weight: 500;
+}
 </style>

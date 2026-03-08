@@ -240,6 +240,48 @@ export const useRoomStore = defineStore('rooms', () => {
     roomFiles.value = []
   }
 
+  // --- Unread messages ---
+  const unreadCounts = ref<Record<string, number>>({})
+
+  const totalUnread = computed(() =>
+    Object.values(unreadCounts.value).reduce((sum, c) => sum + c, 0),
+  )
+
+  async function fetchUnreadCount(tenantId: string, roomId: string) {
+    try {
+      const data = await api.get<{ count: number }>(
+        `/tenant/${tenantId}/room/${roomId}/message/unread-count`,
+      )
+      unreadCounts.value[roomId] = data.count
+    } catch {
+      // non-critical
+    }
+  }
+
+  async function fetchAllUnreadCounts(tenantId: string) {
+    for (const room of rooms.value) {
+      fetchUnreadCount(tenantId, room.id)
+    }
+  }
+
+  async function markMessagesRead(tenantId: string, roomId: string, messageIds: string[]) {
+    if (messageIds.length === 0) return
+    try {
+      await api.post(`/tenant/${tenantId}/room/${roomId}/message/read`, {
+        message_ids: messageIds,
+      })
+      // Decrement unread count
+      const prev = unreadCounts.value[roomId] || 0
+      unreadCounts.value[roomId] = Math.max(0, prev - messageIds.length)
+    } catch {
+      // non-critical
+    }
+  }
+
+  function incrementUnread(roomId: string) {
+    unreadCounts.value[roomId] = (unreadCounts.value[roomId] || 0) + 1
+  }
+
   return {
     // State
     rooms,
@@ -278,5 +320,12 @@ export const useRoomStore = defineStore('rooms', () => {
     uploadRoomFile,
     deleteRoomFile,
     clearRoomFiles,
+    // Unread
+    unreadCounts,
+    totalUnread,
+    fetchUnreadCount,
+    fetchAllUnreadCounts,
+    markMessagesRead,
+    incrementUnread,
   }
 })
