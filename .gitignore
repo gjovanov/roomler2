@@ -11,5 +11,4 @@ ui/dist
 media/
 ui/test-results/
 ui/playwright-report/
-ui/e2e/video/output/*.mp4
-ui/e2e/video/output/*.webm
+ui/e2e/video/output/
