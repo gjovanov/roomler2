@@ -9,12 +9,12 @@
   >
     <div class="editor-toolbar d-flex align-center ga-1 px-2 py-1">
       <v-btn
-        :icon="mode === 'rich' ? 'mdi-format-text' : 'mdi-format-text'"
         size="x-small"
         variant="text"
         :color="mode === 'rich' ? 'primary' : undefined"
         @click="toggleMode"
       >
+        <v-icon>{{ mode === 'rich' ? 'mdi-format-letter-case' : 'mdi-format-text' }}</v-icon>
         <v-tooltip activator="parent" location="top">
           {{ mode === 'minimal' ? 'Rich text mode' : 'Minimal mode' }}
         </v-tooltip>
@@ -156,22 +156,6 @@ import Link from '@tiptap/extension-link'
 import Underline from '@tiptap/extension-underline'
 import Mention from '@tiptap/extension-mention'
 import { Markdown } from 'tiptap-markdown'
-
-// Extend Mention to serialize as @[label](id) in markdown output
-const MentionWithMarkdown = Mention.extend({
-  addStorage() {
-    return {
-      markdown: {
-        serialize(state: { write: (s: string) => void }, node: { attrs: { label?: string; id?: string } }) {
-          const label = node.attrs.label || node.attrs.id || ''
-          const id = node.attrs.id || ''
-          state.write(`@[${label}](${id})`)
-        },
-        parse: {},
-      },
-    }
-  },
-})
 import tippy, { type Instance as TippyInstance } from 'tippy.js'
 import MentionList from './MentionList.vue'
 import type { MentionItem } from './MentionList.vue'
@@ -211,6 +195,10 @@ const emit = defineEmits<{
 const mode = vueRef<EditorMode>(
   (localStorage.getItem('roomler-editor-mode') as EditorMode) || 'minimal',
 )
+// Ensure default is persisted
+if (!localStorage.getItem('roomler-editor-mode')) {
+  localStorage.setItem('roomler-editor-mode', 'minimal')
+}
 const pendingAttachmentIds = vueRef<string[]>([])
 const fileInputRef = vueRef<HTMLInputElement | null>(null)
 const isDragging = vueRef(false)
@@ -294,7 +282,7 @@ const editor = useEditor({
     Link.configure({ openOnClick: false, autolink: true }),
     Underline,
     Markdown.configure({ html: false, transformPastedText: true }),
-    MentionWithMarkdown.configure({
+    Mention.configure({
       HTMLAttributes: {
         class: 'mention',
       },
@@ -390,9 +378,101 @@ watch(
   { immediate: true },
 )
 
+/**
+ * Custom markdown serializer that walks the TipTap JSON tree.
+ * tiptap-markdown silently skips mention nodes (atom: true leaf nodes),
+ * so we serialize manually to ensure @[label](id) format.
+ */
 function getMarkdown(): string {
   if (!editor.value) return ''
-  return editor.value.storage.markdown.getMarkdown()
+  const json = editor.value.getJSON()
+  return serializeNode(json).trim()
+}
+
+function serializeNode(node: Record<string, unknown>): string {
+  const type = node.type as string
+  const attrs = (node.attrs || {}) as Record<string, unknown>
+  const children = (node.content || []) as Record<string, unknown>[]
+
+  switch (type) {
+    case 'doc':
+      return children.map(serializeNode).join('')
+
+    case 'paragraph': {
+      const inner = children.map(serializeNode).join('')
+      return inner + '\n'
+    }
+
+    case 'text': {
+      let text = (node.text as string) || ''
+      const marks = (node.marks || []) as { type: string; attrs?: Record<string, unknown> }[]
+      for (const mark of marks) {
+        switch (mark.type) {
+          case 'bold': text = `**${text}**`; break
+          case 'italic': text = `*${text}*`; break
+          case 'strike': text = `~~${text}~~`; break
+          case 'code': text = `\`${text}\``; break
+          case 'link': text = `[${text}](${mark.attrs?.href || ''})`; break
+        }
+      }
+      return text
+    }
+
+    case 'mention': {
+      const label = (attrs.label as string) || (attrs.id as string) || ''
+      const id = (attrs.id as string) || ''
+      return `@[${label}](${id})`
+    }
+
+    case 'hardBreak':
+      return '\n'
+
+    case 'heading': {
+      const level = (attrs.level as number) || 1
+      const inner = children.map(serializeNode).join('')
+      return '#'.repeat(level) + ' ' + inner + '\n'
+    }
+
+    case 'blockquote': {
+      const inner = children.map(serializeNode).join('')
+      return inner.split('\n').filter(Boolean).map((l) => `> ${l}`).join('\n') + '\n'
+    }
+
+    case 'codeBlock': {
+      const inner = children.map(serializeNode).join('')
+      const lang = (attrs.language as string) || ''
+      return '```' + lang + '\n' + inner + '```\n'
+    }
+
+    case 'bulletList':
+      return children.map((child) => {
+        const inner = serializeNode(child).trim()
+        return `- ${inner}\n`
+      }).join('')
+
+    case 'orderedList':
+      return children.map((child, i) => {
+        const inner = serializeNode(child).trim()
+        return `${i + 1}. ${inner}\n`
+      }).join('')
+
+    case 'listItem': {
+      return children.map(serializeNode).join('').trim()
+    }
+
+    case 'horizontalRule':
+      return '---\n'
+
+    case 'image': {
+      const src = (attrs.src as string) || ''
+      const alt = (attrs.alt as string) || ''
+      return `![${alt}](${src})`
+    }
+
+    default:
+      // Fallback: serialize children
+      return children.map(serializeNode).join('')
+  }
 }
 
 function extractMentions(): MentionData {

@@ -1,8 +1,8 @@
 <template>
-  <v-container fluid class="fill-height pa-0" style="overflow: hidden;">
-    <v-row no-gutters class="fill-height" style="overflow: hidden;">
+  <div class="chat-root">
+    <div class="chat-row">
       <!-- Message list -->
-      <v-col class="d-flex flex-column" style="height: 100%; min-height: 0; overflow: hidden;">
+      <div class="chat-main-col">
         <!-- Room header -->
         <v-toolbar density="compact" flat>
           <v-toolbar-title>
@@ -34,7 +34,7 @@
         <v-divider />
 
         <!-- Messages -->
-        <div ref="messageListRef" class="flex-grow-1 overflow-y-auto pa-4" @scroll="handleScroll">
+        <div ref="messageListRef" class="flex-grow-1 overflow-y-auto pa-4" style="min-height: 0;" @scroll="handleScroll">
           <div v-if="messageStore.loadingMore" class="text-center pa-2">
             <v-progress-circular size="20" indeterminate />
           </div>
@@ -73,17 +73,17 @@
             @open-giphy-picker="showGiphyPicker = true"
           />
         </div>
-      </v-col>
+      </div>
 
       <!-- Thread panel -->
-      <v-col v-if="activeThread" cols="4" class="border-s d-flex flex-column fill-height">
+      <div v-if="activeThread" class="chat-side-panel border-s d-flex flex-column">
         <v-toolbar density="compact" flat>
           <v-toolbar-title class="text-body-1">Thread</v-toolbar-title>
           <v-spacer />
           <v-btn icon="mdi-close" size="small" @click="activeThread = null" />
         </v-toolbar>
         <v-divider />
-        <div class="flex-grow-1 overflow-y-auto pa-4">
+        <div class="flex-grow-1 overflow-y-auto pa-4" style="min-height: 0;">
           <div v-for="msg in messageStore.threadMessages" :key="msg.id" class="mb-2">
             <message-bubble
               :message="msg"
@@ -108,10 +108,10 @@
             @open-giphy-picker="showGiphyPicker = true"
           />
         </div>
-      </v-col>
+      </div>
 
       <!-- Members panel -->
-      <v-col v-if="showMembers" cols="3" class="border-s d-flex flex-column fill-height">
+      <div v-if="showMembers" class="chat-side-panel border-s d-flex flex-column" style="width: 25%;">
         <v-toolbar density="compact" flat>
           <v-toolbar-title class="text-body-1">Members</v-toolbar-title>
           <v-spacer />
@@ -119,8 +119,8 @@
         </v-toolbar>
         <v-divider />
         <member-panel :tenant-id="tenantId" :room-id="roomId" />
-      </v-col>
-    </v-row>
+      </div>
+    </div>
 
     <!-- Emoji picker (shared) -->
     <emoji-picker
@@ -133,7 +133,7 @@
       v-model="showGiphyPicker"
       @select="handleGiphySelect"
     />
-  </v-container>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -320,6 +320,33 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.chat-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.chat-row {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.chat-main-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.chat-side-panel {
+  width: 33%;
+  min-width: 280px;
+  min-height: 0;
+  overflow: hidden;
+}
 .message-highlight {
   animation: highlight-fade 3s ease-out;
 }

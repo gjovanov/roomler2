@@ -1,7 +1,7 @@
 <template>
-  <v-container fluid class="fill-height pa-0" style="overflow: hidden;">
-    <v-row no-gutters class="fill-height" style="overflow: hidden;">
-      <v-col class="d-flex flex-column" style="height: 100%; min-height: 0; overflow: hidden;">
+  <div class="conference-root">
+    <div class="conference-row">
+      <div class="conference-main-col">
         <!-- Call header -->
         <v-toolbar density="compact" flat>
           <v-toolbar-title>
@@ -155,8 +155,8 @@
           <v-btn icon="mdi-phone-hangup" color="error" @click="handleLeave" />
           <v-spacer />
         </v-toolbar>
-      </v-col>
-    </v-row>
+      </div>
+    </div>
 
     <!-- Confirmation dialog for switching calls -->
     <v-dialog v-model="showSwitchDialog" max-width="400">
@@ -173,7 +173,7 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -501,9 +501,31 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.conference-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.conference-row {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.conference-main-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
 .chat-panel {
   width: 320px;
   min-width: 280px;
+  min-height: 0;
   border-left: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background: rgb(var(--v-theme-surface));
 }

@@ -1,5 +1,5 @@
 <template>
-  <v-app>
+  <v-app class="app-layout-root">
     <v-navigation-drawer v-model="drawer" :rail="rail" permanent>
       <v-list-item
         :prepend-icon="rail ? 'mdi-menu' : undefined"
@@ -208,7 +208,7 @@ const isOnCallPage = computed(() => route.name === 'room-call')
 // Active calls across all rooms (excluding the one the user is currently in)
 const activeCallRooms = computed(() =>
   roomStore.rooms.filter(
-    (r) => r.conference_status === 'in_progress' && r.id !== conferenceStore.roomId,
+    (r) => r.conference_status === 'in_progress' && (r.participant_count || 0) > 0 && r.id !== conferenceStore.roomId,
   ),
 )
 
@@ -327,15 +327,26 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.app-main-no-scroll {
-  overflow: hidden !important;
-}
-.app-main-no-scroll :deep(.v-main__wrap) {
+/* Neutralize the inner v-application__wrap's min-height: 100vh
+   so the layout is constrained to the viewport height provided by the OUTER v-app in App.vue */
+.app-layout-root :deep(.v-application__wrap) {
+  min-height: 0 !important;
+  flex: 1 1 0 !important;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
   height: 100%;
 }
+
+/* Make v-main a flex column container so router-view children can fill it,
+   and prevent it from growing beyond available space.
+   Note: Vuetify 3 does NOT render .v-main__wrap — slot content goes directly in <main>. */
+.app-main-no-scroll {
+  overflow: hidden !important;
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
 .call-pulse {
   animation: pulse-green 2s ease-in-out infinite;
 }

@@ -52,7 +52,7 @@ const ALLOWED_TAGS = [
   'td',
 ]
 
-const ALLOWED_ATTR = ['href', 'target', 'rel', 'src', 'alt', 'title', 'class', 'data-mention-id']
+const ALLOWED_ATTR = ['href', 'target', 'rel', 'src', 'alt', 'title', 'class', 'data-mention-id', 'width', 'height', 'style']
 
 // Convert @[Name](id) mention syntax to styled HTML spans
 function preprocessMentions(content: string): string {

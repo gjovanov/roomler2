@@ -93,7 +93,7 @@ const activeTasks = computed(
   () => taskStore.tasks.filter((t) => t.status === 'Processing' || t.status === 'Pending').length,
 )
 const activeCallCount = computed(
-  () => roomStore.rooms.filter((r) => r.conference_status === 'in_progress').length,
+  () => roomStore.rooms.filter((r) => r.conference_status === 'in_progress' && (r.participant_count || 0) > 0).length,
 )
 const totalMessageCount = computed(
   () => roomStore.rooms.reduce((sum, r) => sum + (r.message_count || 0), 0),
