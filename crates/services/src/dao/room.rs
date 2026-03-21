@@ -12,6 +12,7 @@ pub struct RoomDao {
     pub base: BaseDao<Room>,
     pub members: BaseDao<RoomMember>,
     pub chat_messages: BaseDao<CallChatMessage>,
+    db: Database,
 }
 
 impl RoomDao {
@@ -20,6 +21,7 @@ impl RoomDao {
             base: BaseDao::new(db, Room::COLLECTION),
             members: BaseDao::new(db, RoomMember::COLLECTION),
             chat_messages: BaseDao::new(db, CallChatMessage::COLLECTION),
+            db: db.clone(),
         }
     }
 
@@ -186,6 +188,58 @@ impl RoomDao {
         room_id: ObjectId,
     ) -> DaoResult<bool> {
         self.base.soft_delete_in_tenant(tenant_id, room_id).await
+    }
+
+    /// Hard-delete a room and cascade to all related resources:
+    /// messages, reactions, room_members, call_chat_messages, files (soft), recordings.
+    pub async fn cascade_delete(
+        &self,
+        tenant_id: ObjectId,
+        room_id: ObjectId,
+    ) -> DaoResult<()> {
+        // 1. Delete all messages in the room
+        let msg_coll = self.db.collection::<bson::Document>("messages");
+        msg_coll
+            .delete_many(doc! { "room_id": room_id, "tenant_id": tenant_id })
+            .await?;
+
+        // 2. Delete all reactions in the room
+        let react_coll = self.db.collection::<bson::Document>("reactions");
+        react_coll
+            .delete_many(doc! { "room_id": room_id, "tenant_id": tenant_id })
+            .await?;
+
+        // 3. Delete all room members
+        self.members
+            .hard_delete(doc! { "room_id": room_id })
+            .await?;
+
+        // 4. Delete all call chat messages
+        self.chat_messages
+            .hard_delete(doc! { "room_id": room_id })
+            .await?;
+
+        // 5. Soft-delete all files associated with the room
+        let files_coll = self.db.collection::<bson::Document>("files");
+        files_coll
+            .update_many(
+                doc! { "tenant_id": tenant_id, "context.room_id": room_id },
+                doc! { "$set": { "deleted_at": DateTime::now() } },
+            )
+            .await?;
+
+        // 6. Delete all recordings
+        let rec_coll = self.db.collection::<bson::Document>("recordings");
+        rec_coll
+            .delete_many(doc! { "room_id": room_id })
+            .await?;
+
+        // 7. Hard-delete the room itself
+        self.base
+            .hard_delete(doc! { "_id": room_id, "tenant_id": tenant_id })
+            .await?;
+
+        Ok(())
     }
 
     pub async fn explore(&self, tenant_id: ObjectId, query: &str) -> DaoResult<Vec<Room>> {

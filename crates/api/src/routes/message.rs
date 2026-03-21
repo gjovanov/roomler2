@@ -59,10 +59,13 @@ pub struct MessageResponse {
     pub referenced_message_id: Option<String>,
     pub reaction_summary: Vec<ReactionSummaryResponse>,
     pub attachments: Vec<AttachmentResponse>,
+    pub is_read: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_reply_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_reply_user_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -92,11 +95,12 @@ pub async fn list(
 
     let author_ids = collect_author_ids(&result.items);
     let names = state.users.find_display_names(&author_ids).await.unwrap_or_default();
+    let viewer_id = Some(auth.user_id);
 
     let items: Vec<MessageResponse> = result
         .items
         .into_iter()
-        .map(|m| to_response(m, &names))
+        .map(|m| to_response(m, &names, viewer_id))
         .collect();
 
     Ok(Json(serde_json::json!({
@@ -207,7 +211,7 @@ pub async fn create(
         .collect();
 
     // Broadcast via WebSocket to room members (exclude sender)
-    let response = to_response(message, &names);
+    let response = to_response(message, &names, Some(auth.user_id));
     let event = serde_json::json!({
         "type": "message:create",
         "data": &response,
@@ -221,7 +225,7 @@ pub async fn create(
     {
             let parent_author_ids = vec![parent_msg.author_id];
             let parent_names = state.users.find_display_names(&parent_author_ids).await.unwrap_or_default();
-            let parent_response = to_response(parent_msg, &parent_names);
+            let parent_response = to_response(parent_msg, &parent_names, None);
             let parent_event = serde_json::json!({
                 "type": "message:update",
                 "data": &parent_response,
@@ -297,7 +301,7 @@ pub async fn update(
     // Re-fetch the updated message for the full response
     let updated = state.messages.base.find_by_id(mid).await?;
     let names = state.users.find_display_names(&[updated.author_id]).await.unwrap_or_default();
-    let response = to_response(updated, &names);
+    let response = to_response(updated, &names, Some(auth.user_id));
 
     // Broadcast full message to room members (exclude sender)
     let member_ids: Vec<ObjectId> = state
@@ -380,7 +384,7 @@ pub async fn pinned(
     let messages = state.messages.find_pinned(rid).await?;
     let author_ids = collect_author_ids(&messages);
     let names = state.users.find_display_names(&author_ids).await.unwrap_or_default();
-    let response: Vec<MessageResponse> = messages.into_iter().map(|m| to_response(m, &names)).collect();
+    let response: Vec<MessageResponse> = messages.into_iter().map(|m| to_response(m, &names, Some(auth.user_id))).collect();
 
     Ok(Json(response))
 }
@@ -442,11 +446,12 @@ pub async fn thread_replies(
 
     let author_ids = collect_author_ids(&result.items);
     let names = state.users.find_display_names(&author_ids).await.unwrap_or_default();
+    let viewer_id = Some(auth.user_id);
 
     let items: Vec<MessageResponse> = result
         .items
         .into_iter()
-        .map(|m| to_response(m, &names))
+        .map(|m| to_response(m, &names, viewer_id))
         .collect();
 
     Ok(Json(serde_json::json!({
@@ -458,19 +463,21 @@ pub async fn thread_replies(
     })))
 }
 
-fn to_response(m: roomler2_db::models::Message, names: &HashMap<ObjectId, String>) -> MessageResponse {
+fn to_response(m: roomler2_db::models::Message, names: &HashMap<ObjectId, String>, viewer_id: Option<ObjectId>) -> MessageResponse {
     let author_name = names
         .get(&m.author_id)
         .cloned()
         .unwrap_or_else(|| m.author_id.to_hex());
-    let (reply_count, last_reply_at) = match &m.thread_metadata {
+    let is_read = viewer_id.is_some_and(|uid| m.readby.iter().any(|r| r == &uid));
+    let (reply_count, last_reply_at, last_reply_user_id) = match &m.thread_metadata {
         Some(tm) => (
             Some(tm.reply_count),
             tm.last_reply_at
                 .as_ref()
                 .map(|d| d.try_to_rfc3339_string().unwrap_or_default()),
+            tm.last_reply_user_id.map(|u| u.to_hex()),
         ),
-        None => (None, None),
+        None => (None, None, None),
     };
     MessageResponse {
         id: m.id.unwrap().to_hex(),
@@ -504,8 +511,10 @@ fn to_response(m: roomler2_db::models::Message, names: &HashMap<ObjectId, String
                 thumbnail_url: a.thumbnail_url,
             })
             .collect(),
+        is_read,
         reply_count,
         last_reply_at,
+        last_reply_user_id,
         created_at: m.created_at.try_to_rfc3339_string().unwrap_or_default(),
         updated_at: m.updated_at.try_to_rfc3339_string().unwrap_or_default(),
     }

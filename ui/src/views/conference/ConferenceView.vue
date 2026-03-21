@@ -440,8 +440,10 @@ async function handleJoin() {
     window.addEventListener('beforeunload', warnBeforeLeave)
     conferenceStore.startActiveSpeaker()
     wsStore.onMediaMessage('media:audio_playback', audioPlayback.handlePlaybackMessage)
-    messageStore.fetchMessages(tenantId.value, roomId.value).catch(() => {})
+    await messageStore.fetchMessages(tenantId.value, roomId.value).catch(() => {})
     await roomStore.fetchParticipants(tenantId.value, roomId.value)
+    await nextTick()
+    scrollChatToBottom()
     return
   }
 
@@ -461,11 +463,15 @@ async function doJoin() {
     await conferenceStore.produceLocalMedia()
     await roomStore.fetchParticipants(tenantId.value, roomId.value)
     fetchRoomMembers()
-    messageStore.fetchMessages(tenantId.value, roomId.value).catch(() => {})
+    await messageStore.fetchMessages(tenantId.value, roomId.value).catch(() => {})
 
     joined.value = true
     showChat.value = true
     window.addEventListener('beforeunload', warnBeforeLeave)
+
+    // Scroll chat to latest message after joining
+    await nextTick()
+    scrollChatToBottom()
 
     conferenceStore.startActiveSpeaker()
     wsStore.onMediaMessage('media:audio_playback', audioPlayback.handlePlaybackMessage)
@@ -562,8 +568,10 @@ onMounted(async () => {
     conferenceStore.startActiveSpeaker()
     wsStore.onMediaMessage('media:audio_playback', audioPlayback.handlePlaybackMessage)
     fetchRoomMembers()
-    messageStore.fetchMessages(tenantId.value, roomId.value).catch(() => {})
+    await messageStore.fetchMessages(tenantId.value, roomId.value).catch(() => {})
     await roomStore.fetchParticipants(tenantId.value, roomId.value)
+    await nextTick()
+    scrollChatToBottom()
   }
 })
 

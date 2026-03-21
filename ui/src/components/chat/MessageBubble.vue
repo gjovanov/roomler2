@@ -116,10 +116,13 @@
         <!-- Thread indicator -->
         <div
           v-if="message.is_thread_root"
-          class="mt-1 text-caption text-primary cursor-pointer"
+          class="mt-1 text-caption text-primary cursor-pointer d-flex align-center ga-2"
           @click="$emit('reply')"
         >
-          View thread
+          <v-icon size="14">mdi-comment-outline</v-icon>
+          <span v-if="message.reply_count">{{ message.reply_count }} {{ message.reply_count === 1 ? 'reply' : 'replies' }}</span>
+          <span v-else>View thread</span>
+          <span v-if="message.last_reply_at" class="text-medium-emphasis">{{ formatRelativeTime(message.last_reply_at) }}</span>
         </div>
       </div>
     </div>
@@ -173,6 +176,8 @@ interface Message {
   is_pinned: boolean
   is_edited: boolean
   is_thread_root: boolean
+  reply_count?: number
+  last_reply_at?: string
   reaction_summary: Reaction[]
   attachments: Attachment[]
   created_at: string
@@ -208,6 +213,20 @@ const authorInitial = computed(() =>
 function formatTime(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatRelativeTime(iso: string): string {
+  const now = Date.now()
+  const then = new Date(iso).getTime()
+  const diffMs = now - then
+  const diffSec = Math.floor(diffMs / 1000)
+  if (diffSec < 60) return 'just now'
+  const diffMin = Math.floor(diffSec / 60)
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  const diffDay = Math.floor(diffHr / 24)
+  return `${diffDay}d ago`
 }
 
 function startEditing() {

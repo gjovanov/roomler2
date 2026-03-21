@@ -10,6 +10,8 @@ interface FileEntry {
   size: number
   uploaded_by: string
   created_at: string
+  room_id?: string
+  room_name?: string
 }
 
 export const useFileStore = defineStore('files', () => {
@@ -21,6 +23,18 @@ export const useFileStore = defineStore('files', () => {
     try {
       const data = await api.get<{ items: FileEntry[] }>(
         `/tenant/${tenantId}/room/${roomId}/file`,
+      )
+      files.value = data.items
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchTenantFiles(tenantId: string) {
+    loading.value = true
+    try {
+      const data = await api.get<{ items: FileEntry[] }>(
+        `/tenant/${tenantId}/file`,
       )
       files.value = data.items
     } finally {
@@ -49,5 +63,5 @@ export const useFileStore = defineStore('files', () => {
     return `/api/tenant/${tenantId}/file/${fileId}/download`
   }
 
-  return { files, loading, fetchFiles, uploadFile, deleteFile, downloadUrl }
+  return { files, loading, fetchFiles, fetchTenantFiles, uploadFile, deleteFile, downloadUrl }
 })

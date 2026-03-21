@@ -189,7 +189,7 @@ pub async fn delete(
         return Err(ApiError::Forbidden("Not a member".to_string()));
     }
 
-    state.rooms.soft_delete(tid, rid).await?;
+    state.rooms.cascade_delete(tid, rid).await?;
 
     Ok(Json(serde_json::json!({ "deleted": true })))
 }

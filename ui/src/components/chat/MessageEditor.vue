@@ -131,7 +131,11 @@
         variant="text"
         color="primary"
         @click="handleSend"
-      />
+      >
+        <v-tooltip activator="parent" location="top">
+          Send (Ctrl+Enter)
+        </v-tooltip>
+      </v-btn>
     </div>
 
     <editor-content :editor="editor" class="editor-content" />
@@ -364,10 +368,15 @@ const editor = useEditor({
   editorProps: {
     handleKeyDown(_view, event) {
       // In minimal mode: Enter sends, Shift+Enter inserts newline
-      // In rich mode: Enter inserts newline (TipTap default), no override
       if (mode.value === 'minimal' && event.key === 'Enter' && !event.shiftKey) {
         // When mention popup is open, let the mention plugin handle Enter
         if (isMentionOpen.value) return false
+        event.preventDefault()
+        handleSend()
+        return true
+      }
+      // Rich mode: Ctrl+Enter or Cmd+Enter sends
+      if (mode.value === 'rich' && event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
         event.preventDefault()
         handleSend()
         return true

@@ -4,7 +4,11 @@
       <v-col cols="12" class="d-flex align-center">
         <h1 class="text-h4">{{ $t('nav.files') }}</h1>
         <v-spacer />
-        <v-btn color="primary" prepend-icon="mdi-upload" @click="triggerUpload">
+        <v-btn-toggle v-model="viewMode" mandatory density="compact" class="mr-4">
+          <v-btn value="all" size="small">All Files</v-btn>
+          <v-btn value="room" size="small" :disabled="!currentRoomId">Room Files</v-btn>
+        </v-btn-toggle>
+        <v-btn color="primary" prepend-icon="mdi-upload" @click="triggerUpload" :disabled="!currentRoomId">
           {{ $t('files.upload') }}
         </v-btn>
         <input
@@ -35,6 +39,7 @@
           <thead>
             <tr>
               <th>Name</th>
+              <th v-if="viewMode === 'all'">Room</th>
               <th>Type</th>
               <th>Size</th>
               <th>Uploaded</th>
@@ -46,6 +51,16 @@
               <td>
                 <v-icon size="small" class="mr-2">{{ fileIcon(f.content_type) }}</v-icon>
                 {{ f.filename }}
+              </td>
+              <td v-if="viewMode === 'all'">
+                <router-link
+                  v-if="f.room_id"
+                  :to="{ name: 'room-chat', params: { tenantId: tenantId, roomId: f.room_id } }"
+                  class="text-decoration-none"
+                >
+                  {{ f.room_name || f.room_id }}
+                </router-link>
+                <span v-else class="text-medium-emphasis">--</span>
               </td>
               <td>{{ f.content_type }}</td>
               <td>{{ formatSize(f.size) }}</td>
@@ -80,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useFileStore } from '@/stores/files'
 import { useRoomStore } from '@/stores/rooms'
@@ -90,8 +105,10 @@ const fileStore = useFileStore()
 const roomStore = useRoomStore()
 
 const tenantId = computed(() => route.params.tenantId as string)
+const currentRoomId = computed(() => roomStore.current?.id || roomStore.rooms[0]?.id || '')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
+const viewMode = ref<'all' | 'room'>('all')
 
 function triggerUpload() {
   fileInputRef.value?.click()
@@ -103,7 +120,7 @@ async function handleFileSelect(event: Event) {
   if (!files?.length) return
 
   uploading.value = true
-  const roomId = roomStore.current?.id || roomStore.rooms[0]?.id
+  const roomId = currentRoomId.value
   if (!roomId) return
 
   for (const file of files) {
@@ -133,10 +150,22 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-onMounted(() => {
-  const roomId = roomStore.current?.id || roomStore.rooms[0]?.id
-  if (roomId) {
-    fileStore.fetchFiles(tenantId.value, roomId)
+function loadFiles() {
+  if (viewMode.value === 'all') {
+    fileStore.fetchTenantFiles(tenantId.value)
+  } else {
+    const roomId = currentRoomId.value
+    if (roomId) {
+      fileStore.fetchFiles(tenantId.value, roomId)
+    }
   }
+}
+
+watch(viewMode, () => {
+  loadFiles()
+})
+
+onMounted(() => {
+  loadFiles()
 })
 </script>

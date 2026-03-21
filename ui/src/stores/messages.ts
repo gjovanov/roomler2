@@ -36,8 +36,10 @@ interface Message {
   reaction_summary: Reaction[]
   attachments: Attachment[]
   mentions?: MentionData
+  is_read?: boolean
   reply_count?: number
   last_reply_at?: string
+  last_reply_user_id?: string
   created_at: string
   updated_at: string
 }
@@ -215,7 +217,13 @@ export const useMessageStore = defineStore('messages', () => {
     const data = await api.get<{ items: Message[] }>(
       `/tenant/${tenantId}/room/${roomId}/message/${messageId}/thread`,
     )
-    threadMessages.value = data.items
+    // Prepend the parent message so the thread panel shows the original message first
+    const parent = messages.value.find((m) => m.id === messageId)
+    if (parent && !data.items.some((m) => m.id === messageId)) {
+      threadMessages.value = [parent, ...data.items]
+    } else {
+      threadMessages.value = data.items
+    }
   }
 
   function addMessageFromWs(msg: Message) {

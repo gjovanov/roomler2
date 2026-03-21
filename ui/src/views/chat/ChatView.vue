@@ -320,6 +320,12 @@ watch(roomId, async (id) => {
     pendingReadIds.value.clear()
     fetchRoomMembers()
     await messageStore.fetchMessages(tenantId.value, id)
+    // Initialize read state from backend
+    for (const msg of messageStore.messages) {
+      if (msg.is_read || msg.author_id === currentUserId.value) {
+        readMessageIds.value.add(msg.id)
+      }
+    }
     await nextTick()
     scrollToBottom()
     setupReadObserver()
@@ -394,6 +400,12 @@ onMounted(async () => {
     roomStore.fetchRoom(tenantId.value, roomId.value)
     fetchRoomMembers()
     await messageStore.fetchMessages(tenantId.value, roomId.value)
+    // Initialize read state from backend
+    for (const msg of messageStore.messages) {
+      if (msg.is_read || msg.author_id === currentUserId.value) {
+        readMessageIds.value.add(msg.id)
+      }
+    }
     await nextTick()
     const targetMsg = route.query.msg as string | undefined
     if (targetMsg) {

@@ -127,6 +127,7 @@ pub fn build_router(state: AppState) -> Router {
 
     // File-by-ID routes (under tenant — no room prefix needed)
     let file_by_id_routes = Router::new()
+        .route("/", get(routes::file::list_tenant_files))
         .route("/upload", post(routes::file::upload))
         .route("/{file_id}", get(routes::file::get))
         .route("/{file_id}/download", get(routes::file::download))

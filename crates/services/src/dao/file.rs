@@ -102,6 +102,23 @@ impl FileDao {
             .await
     }
 
+    pub async fn find_by_tenant(
+        &self,
+        tenant_id: ObjectId,
+        params: &PaginationParams,
+    ) -> DaoResult<PaginatedResult<models::File>> {
+        self.base
+            .find_paginated(
+                doc! {
+                    "tenant_id": tenant_id,
+                    "deleted_at": null,
+                },
+                Some(doc! { "created_at": -1 }),
+                params,
+            )
+            .await
+    }
+
     pub async fn soft_delete(
         &self,
         tenant_id: ObjectId,

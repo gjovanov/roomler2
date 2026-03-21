@@ -41,3 +41,5 @@ mod pagination_tests;
 mod role_tests;
 #[cfg(test)]
 mod cors_tests;
+#[cfg(test)]
+mod billing_tests;

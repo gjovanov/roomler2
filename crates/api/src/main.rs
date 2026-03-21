@@ -40,20 +40,20 @@ async fn main() -> anyhow::Result<()> {
     // Build app state (async: spawns mediasoup workers)
     let app_state = AppState::new(db.clone(), settings.clone()).await?;
 
-    // Clean up stale calls (in_progress with 0 participants) left over from previous runs
+    // Clean up ALL stale calls — no calls can be active at server startup
     {
         let rooms_coll = db.collection::<bson::Document>("rooms");
         let result = rooms_coll
             .update_many(
-                bson::doc! { "conference_status": "in_progress", "participant_count": { "$lte": 0 } },
-                bson::doc! { "$set": { "conference_status": "ended" } },
+                bson::doc! { "conference_status": "in_progress" },
+                bson::doc! { "$set": { "conference_status": "ended", "participant_count": 0 } },
             )
             .await
             .ok();
         if let Some(res) = result
             && res.modified_count > 0
         {
-            info!("Cleaned up {} stale calls (in_progress with 0 participants)", res.modified_count);
+            info!("Cleaned up {} stale calls (all in_progress reset to ended)", res.modified_count);
         }
     }
 
