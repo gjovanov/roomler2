@@ -284,7 +284,9 @@ const isMentionOpen = vueRef(false)
 const editor = useEditor({
   content: props.initialContent,
   extensions: [
-    StarterKit,
+    StarterKit.configure({
+      // Prevent duplicate extensions — tiptap-markdown may register its own
+    }),
     Placeholder.configure({ placeholder: props.placeholder }),
     Link.configure({ openOnClick: false, autolink: true }),
     Underline,

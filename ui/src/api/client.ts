@@ -24,6 +24,41 @@ function getToken(): string | null {
   return localStorage.getItem('access_token')
 }
 
+let refreshPromise: Promise<boolean> | null = null
+
+async function tryRefreshToken(): Promise<boolean> {
+  // Deduplicate concurrent refresh attempts
+  if (refreshPromise) return refreshPromise
+  refreshPromise = doRefresh()
+  const result = await refreshPromise
+  refreshPromise = null
+  return result
+}
+
+async function doRefresh(): Promise<boolean> {
+  const refreshToken = localStorage.getItem('refresh_token')
+  if (!refreshToken) return false
+  try {
+    const resp = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+    if (!resp.ok) return false
+    const data = await resp.json()
+    if (data.access_token) {
+      localStorage.setItem('access_token', data.access_token)
+      if (data.refresh_token) {
+        localStorage.setItem('refresh_token', data.refresh_token)
+      }
+      return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, headers = {} } = options
   const token = getToken()
@@ -50,10 +85,37 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     const data = await resp.json().catch(() => ({}))
 
     if (
-      (resp.status === 401 || resp.status === 403) &&
+      resp.status === 401 &&
+      !AUTH_PATHS.some((p) => path.startsWith(p))
+    ) {
+      // Try to refresh the token before giving up
+      const refreshed = await tryRefreshToken()
+      if (refreshed) {
+        // Retry the original request with the new token
+        const retryHeaders = { ...fetchHeaders, Authorization: `Bearer ${getToken()}` }
+        const retryResp = await fetch(`${BASE_URL}${path}`, {
+          method,
+          headers: retryHeaders,
+          body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
+        })
+        if (retryResp.ok) {
+          const ct = retryResp.headers.get('content-type') || ''
+          if (ct.includes('application/json')) return retryResp.json() as Promise<T>
+          return retryResp.blob() as unknown as Promise<T>
+        }
+      }
+      // Refresh failed or retry failed — force logout
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      router.push({ name: 'login' })
+    }
+
+    if (
+      resp.status === 403 &&
       !AUTH_PATHS.some((p) => path.startsWith(p))
     ) {
       localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
       router.push({ name: 'login' })
     }
 

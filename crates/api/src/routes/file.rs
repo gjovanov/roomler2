@@ -142,14 +142,13 @@ pub async fn upload(
         ApiError::Internal(format!("Failed to write file: {}", e))
     })?;
 
-    let url = format!("/api/tenant/{}/file/{}", tid.to_hex(), storage_key);
-
     let context = FileContext {
         context_type: FileContextType::Room,
         entity_id: rid,
         room_id: Some(rid),
     };
 
+    // Create with placeholder URL (will update after we have the file ID)
     let file = state
         .files
         .create(
@@ -161,11 +160,21 @@ pub async fn upload(
             size,
             "local".to_string(),
             storage_key,
-            url,
+            String::new(),
         )
         .await?;
 
-    Ok(Json(to_response(file)))
+    // Set URL using the file's MongoDB ObjectId for proper download routing
+    let file_id_hex = file.id.unwrap().to_hex();
+    let url = format!("/api/tenant/{}/file/{}/download", tid.to_hex(), file_id_hex);
+    state.files.base.update_one(
+        bson::doc! { "_id": file.id.unwrap() },
+        bson::doc! { "$set": { "url": &url } },
+    ).await?;
+
+    let mut resp = to_response(file);
+    resp.url = url;
+    Ok(Json(resp))
 }
 
 pub async fn get(
@@ -307,12 +316,6 @@ pub async fn upload_room(
         ApiError::Internal(format!("Failed to write file: {}", e))
     })?;
 
-    let url = format!(
-        "/api/tenant/{}/file/{}",
-        tid.to_hex(),
-        storage_key
-    );
-
     let context = FileContext {
         context_type: FileContextType::Room,
         entity_id: rid,
@@ -330,11 +333,20 @@ pub async fn upload_room(
             size,
             "local".to_string(),
             storage_key,
-            url,
+            String::new(),
         )
         .await?;
 
-    Ok(Json(to_response(file)))
+    let file_id_hex = file.id.unwrap().to_hex();
+    let url = format!("/api/tenant/{}/file/{}/download", tid.to_hex(), file_id_hex);
+    state.files.base.update_one(
+        bson::doc! { "_id": file.id.unwrap() },
+        bson::doc! { "$set": { "url": &url } },
+    ).await?;
+
+    let mut resp = to_response(file);
+    resp.url = url;
+    Ok(Json(resp))
 }
 
 fn upload_dir() -> PathBuf {
