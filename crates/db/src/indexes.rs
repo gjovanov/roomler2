@@ -238,11 +238,11 @@ async fn create_indexes(
             Ok(())
         }
         Err(e) => {
-            // IndexKeySpecsConflict (code 86): an existing index has the same name
-            // but different options (e.g. non-sparse vs sparse). Drop the conflicting
-            // index and retry.
+            // IndexOptionsConflict (85) or IndexKeySpecsConflict (86): an existing
+            // index has the same name but different options (e.g. adding TTL to an
+            // existing index). Drop all indexes and recreate.
             if let mongodb::error::ErrorKind::Command(ref cmd_err) = *e.kind
-                && cmd_err.code == 86
+                && (cmd_err.code == 85 || cmd_err.code == 86)
             {
                     tracing::warn!(
                         collection,
