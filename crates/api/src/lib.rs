@@ -242,12 +242,16 @@ pub fn build_router(state: AppState) -> Router {
     // Health check
     let health = Router::new().route("/health", get(health_check));
 
-    Router::new()
+    // Apply rate limiting only to API routes (not health/ws which need unrestricted access)
+    let rate_limited_api = Router::new()
         .nest("/api", api)
+        .layer(governor_layer);
+
+    Router::new()
+        .merge(rate_limited_api)
         .merge(health)
         .route("/ws", get(ws::handler::ws_upgrade))
         .layer(TraceLayer::new_for_http())
-        .layer(governor_layer)
         .layer(cors)
         .with_state(state)
 }
