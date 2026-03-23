@@ -1,10 +1,10 @@
 <template>
   <v-app class="app-layout-root">
-    <v-navigation-drawer v-model="drawer" :rail="rail" permanent>
+    <v-navigation-drawer v-model="drawer" :rail="!mobile && rail" :permanent="!mobile" :temporary="mobile">
       <v-list-item
-        :prepend-icon="rail ? 'mdi-menu' : undefined"
-        :title="rail ? '' : 'Roomler'"
-        @click="rail = !rail"
+        :prepend-icon="!mobile && rail ? 'mdi-menu' : undefined"
+        :title="!mobile && rail ? '' : 'Roomler'"
+        @click="mobile ? undefined : rail = !rail"
       >
         <template v-if="!rail" #prepend>
           <v-icon color="primary">mdi-forum</v-icon>
@@ -87,7 +87,10 @@
     </v-navigation-drawer>
 
     <v-app-bar density="compact" flat>
-      <v-app-bar-title>
+      <template #prepend>
+        <v-app-bar-nav-icon v-if="mobile" @click="drawer = !drawer" />
+      </template>
+      <v-app-bar-title class="app-bar-title-truncate">
         {{ pageTitle }}
       </v-app-bar-title>
 
@@ -209,7 +212,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useTheme } from 'vuetify'
+import { useTheme, useDisplay } from 'vuetify'
 import { useAuth } from '@/composables/useAuth'
 import { useTenantStore } from '@/stores/tenant'
 import { useRoomStore } from '@/stores/rooms'
@@ -220,6 +223,7 @@ import NotificationPanel from '@/components/layout/NotificationPanel.vue'
 import MiniConference from '@/components/conference/MiniConference.vue'
 import SearchDialog from '@/components/layout/SearchDialog.vue'
 
+const { mobile } = useDisplay()
 const { auth, logout: handleLogout } = useAuth()
 const tenantStore = useTenantStore()
 const roomStore = useRoomStore()
@@ -394,5 +398,10 @@ onUnmounted(() => {
 @keyframes pulse-green {
   0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4); }
   50% { box-shadow: 0 0 0 8px rgba(76, 175, 80, 0); }
+}
+.app-bar-title-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

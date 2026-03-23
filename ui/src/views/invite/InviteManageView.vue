@@ -2,7 +2,7 @@
   <v-container>
     <v-row>
       <v-col>
-        <div class="d-flex align-center mb-4">
+        <div class="d-flex align-center flex-wrap ga-2 mb-4">
           <h2 class="text-h5">Invite Links</h2>
           <v-spacer />
           <v-btn

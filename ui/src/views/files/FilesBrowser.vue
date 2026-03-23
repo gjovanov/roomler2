@@ -1,7 +1,7 @@
 <template>
   <v-container>
     <v-row>
-      <v-col cols="12" class="d-flex align-center">
+      <v-col cols="12" class="d-flex align-center flex-wrap ga-2">
         <h1 class="text-h4">{{ $t('nav.files') }}</h1>
         <v-spacer />
         <v-btn-toggle v-model="viewMode" mandatory density="compact" class="mr-4">

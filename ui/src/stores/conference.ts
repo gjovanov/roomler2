@@ -45,6 +45,22 @@ export const useConferenceStore = defineStore('conference', () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices()
       availableDevices.value = devices
+
+      // Auto-select first audio input if none selected
+      if (!selectedAudioDeviceId.value) {
+        const firstAudio = devices.find(d => d.kind === 'audioinput' && d.deviceId)
+        if (firstAudio) {
+          selectedAudioDeviceId.value = firstAudio.deviceId
+        }
+      }
+
+      // Auto-select first video input if none selected
+      if (!selectedVideoDeviceId.value) {
+        const firstVideo = devices.find(d => d.kind === 'videoinput' && d.deviceId)
+        if (firstVideo) {
+          selectedVideoDeviceId.value = firstVideo.deviceId
+        }
+      }
     } catch (err) {
       console.error('[conference] Failed to enumerate devices:', err)
     }

@@ -28,6 +28,7 @@
             />
           </v-btn>
           <v-btn icon="mdi-pin" size="small" @click="showPinned = !showPinned" />
+          <v-btn icon="mdi-folder" size="small" @click="showFiles = !showFiles" />
           <v-btn icon="mdi-account-group" size="small" @click="showMembers = !showMembers" />
         </v-toolbar>
 
@@ -138,6 +139,17 @@
         <v-divider />
         <member-panel :tenant-id="tenantId" :room-id="roomId" />
       </div>
+
+      <!-- Files panel -->
+      <div v-if="showFiles" class="chat-side-panel border-s d-flex flex-column" style="width: 25%;">
+        <v-toolbar density="compact" flat>
+          <v-toolbar-title class="text-body-1">Files</v-toolbar-title>
+          <v-spacer />
+          <v-btn icon="mdi-close" size="small" @click="showFiles = false" />
+        </v-toolbar>
+        <v-divider />
+        <file-panel :tenant-id="tenantId" :room-id="roomId" />
+      </div>
     </div>
 
     <!-- Emoji picker (shared) -->
@@ -166,6 +178,7 @@ import MessageEditor from '@/components/chat/MessageEditor.vue'
 import type { MentionData } from '@/components/chat/MessageEditor.vue'
 import type { MentionItem } from '@/components/chat/MentionList.vue'
 import MemberPanel from '@/components/chat/MemberPanel.vue'
+import FilePanel from '@/components/chat/FilePanel.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
 import GiphyPicker from '@/components/chat/GiphyPicker.vue'
 
@@ -190,6 +203,7 @@ function goToCall() {
 const activeThread = ref<{ id: string } | null>(null)
 const showPinned = ref(false)
 const showMembers = ref(false)
+const showFiles = ref(false)
 const showEmojiPicker = ref(false)
 const showGiphyPicker = ref(false)
 const emojiTarget = ref<'editor' | 'thread'>('editor')
@@ -318,6 +332,7 @@ watch(roomId, async (id) => {
   if (id) {
     readMessageIds.value.clear()
     pendingReadIds.value.clear()
+    showFiles.value = false
     fetchRoomMembers()
     await messageStore.fetchMessages(tenantId.value, id)
     // Initialize read state from backend
@@ -453,5 +468,17 @@ onMounted(async () => {
 @keyframes highlight-fade {
   0% { background: rgba(var(--v-theme-primary), 0.25); }
   100% { background: transparent; }
+}
+@media (max-width: 960px) {
+  .chat-side-panel {
+    position: fixed !important;
+    top: 48px;
+    right: 0;
+    bottom: 0;
+    width: 100% !important;
+    min-width: unset !important;
+    z-index: 10;
+    background: rgb(var(--v-theme-surface));
+  }
 }
 </style>
