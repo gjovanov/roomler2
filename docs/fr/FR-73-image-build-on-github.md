@@ -188,7 +188,10 @@ projects. Nothing on the host is torn down by this FR.
       manifests (each candidate's manifest is read back by digest); the protected-tag assertion is
       unchanged. The fixed job's dry run (33990772888) keeps all three — their manifests report
       `config.mediaType = application/vnd.oci.empty.v1+json`, the OCI artifact shape attestations
-      use — "untagged: 3, of which cache manifests: 0". Scheduled Mondays 05:00 UTC.
+      use — "untagged: 3, of which cache manifests: 0". **Run live once on 2026-09-06 12:33Z** (run
+      34033536786), after a day of builds: 45 versions, 22 untagged of which 12 were BuildKit
+      cache manifests — one per build's cache export — **all 12 deleted**, the 10 attestations
+      kept, 0 `hosted-*` pruned (7 dated, below the 20 kept). Scheduled Mondays 05:00 UTC.
 - [x] **AC8** The break-glass path is documented and was exercised once after the switch (a
       build-host build pushed to the old registry, not deployed). — 2026-09-05 20:20–20:30Z: master
       `70a279d` built on the build host in 9 min 38 s (warm), pushed to the build host's registry in
