@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 G ROX EOOD
+
 //! FR-72 P6 — the last rung of the MagicDNS ladder.
 //!
 //! The preferred path is the OS split-DNS steer (`dns::configure_os`): dynamic,
