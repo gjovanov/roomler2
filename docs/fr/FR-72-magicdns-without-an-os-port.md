@@ -22,7 +22,7 @@ something else briefly holds the port.
 | P1 | Keep the resolver's `JoinHandle` and abort it in the runtime teardown | **shipped 0.4.71** (#1397) | — (a task that was already meant to stop) |
 | P2 | Retry a failed bind; steer the OS when the bind lands late; await the aborted task | **shipped 0.4.73** (#1414), field-verified | — (retry is unconditional; the pre-P2 behaviour is "give up", not a safer state) |
 | P3 | Reporting: make `magicdns active` mean *answering* | open (#1363) | — |
-| P4 | Docs: `docs/magicdns.md` in house style with diagrams, linked from `docs/README.md` | **required before close** | — |
+| P4 | Docs: [`docs/magicdns.md`](../magicdns.md) in house style with diagrams, linked from `docs/README.md` | **shipped** | — |
 
 ## The bug, part 1 — we collided with ourselves (P1)
 
@@ -169,9 +169,11 @@ broken one's local rule became effective after a policy refresh.
       overlay address and the NRPT rule is in the effective table.
 - [x] No regression on a host that was already healthy (the control org bound and
       steered normally throughout the provoked run).
-- [ ] **P4 — docs**: `docs/magicdns.md` written in house style (mermaid lifecycle
-      diagram, `file:line` anchors, callouts) and linked from `docs/README.md`'s
-      map and table. Required before this FR closes.
+- [x] **P4 — docs**: [`docs/magicdns.md`](../magicdns.md) written in house style
+      (mermaid bring-up sequence + query flowchart, `file:line` anchors,
+      callouts) and linked from `docs/README.md`'s map and table. It carries the
+      diagnostics table naming the three instruments that lie here, so the next
+      reader does not re-pay for them.
 - [ ] The corp laptop that opened this FR resolves MagicDNS on 0.4.73. It
       converges by auto-update; it has had three distinct causes behind one
       symptom, so it is not claimed until read.
