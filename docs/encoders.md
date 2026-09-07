@@ -200,6 +200,29 @@ flowchart LR
 - A confirmed relay⇄direct transport flip rebuilds capture+encoder on a debounce
   (2 consecutive confirmations, 60 s cooldown) so the profile matches the path.
 
+## Building the FFmpeg backend locally on Windows (FR-77 P0)
+
+The `ffmpeg-encoder` feature links the **vendored** FFmpeg (static-md, LGPL,
+minimal) — the same zip `release-agent.yml` fetches — so a local build must stage
+that tree, not a system FFmpeg. `scripts/dev-ffmpeg-windows.ps1` does what the
+workflow's "Fetch vendored FFmpeg" step does, on a dev box:
+
+```powershell
+pwsh scripts/dev-ffmpeg-windows.ps1          # download + verify + stage under C:\ffmpeg-pin, once
+# in a vcvars64 / "x64 Native Tools" shell (bindgen wants MSVC's stdint.h):
+Invoke-Expression (pwsh scripts/dev-ffmpeg-windows.ps1 -Env | Out-String)
+cargo build -p roomlerd --release --features "full-hw,vp9-444,system-context,ffmpeg-encoder,overlay-l3,overlay-netstack,ssh-server"
+.\target\release\roomlerd.exe encoder-smoke --encoder hardware --codec hevc
+```
+
+It stages FFmpeg under `C:\ffmpeg-pin\installed\x64-windows-static-md` and libvpx
+next to it, rewrites the `.pc` prefixes, and provides `pkg-config.exe` (vcpkg's
+`pkgconf`, renamed — what CI does). `-FfmpegRelease` / `-FfmpegAsset` pin any
+published vendored build, which is also the rollback recipe. The FFmpeg **command
+line** for experiments is a different thing: `winget install Gyan.FFmpeg` (a GPL full
+build, never shipped) gives `ffmpeg -encoders` for a quick look at what a box's
+drivers expose.
+
 ## Viewer decode paths
 
 The browser probes per-codec **software and hardware** decode support and exposes
