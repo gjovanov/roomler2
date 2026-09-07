@@ -161,8 +161,13 @@ if (-not $works) {
 
 # ── 5. The environment ────────────────────────────────────────────────────
 $vpxPkg = Get-Content (Join-Path $Root 'libvpx-pkgconfig.txt') -Raw
+# Deliberately NO FFMPEG_DIR: when it is set, ffmpeg-sys-next's build script
+# takes the include/lib dirs from it and never asks pkg-config, so the extra
+# libraries the vendored .pc files carry (`-lvpl -ladvapi32 -lole32 …`) are
+# never linked and the build dies at link time with every `MFX*` symbol
+# unresolved. The workflow sets only PKG_CONFIG_PATH on Windows for the same
+# reason; FFMPEG_DIR is a Linux/macOS convenience for the SHARED trees.
 $lines = @(
-  "`$env:FFMPEG_DIR = '$ffRoot'",
   "`$env:PKG_CONFIG_PATH = '$(Join-Path $ffRoot 'lib\pkgconfig');$vpxPkg'",
   "`$env:PKG_CONFIG_ALLOW_SYSTEM_LIBS = '1'",
   "`$env:PATH = '$binDir;' + `$env:PATH",

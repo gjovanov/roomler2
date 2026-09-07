@@ -217,7 +217,17 @@ cargo build -p roomlerd --release --features "full-hw,vp9-444,system-context,ffm
 
 It stages FFmpeg under `C:\ffmpeg-pin\installed\x64-windows-static-md` and libvpx
 next to it, rewrites the `.pc` prefixes, and provides `pkg-config.exe` (vcpkg's
-`pkgconf`, renamed — what CI does). `-FfmpegRelease` / `-FfmpegAsset` pin any
+`pkgconf` **with its `pkgconf-N.dll`**, renamed — what CI does). Three things the
+first run on the dev box taught, all encoded in the script: the env must carry
+`CMAKE_POLICY_VERSION_MINIMUM=3.5` (audiopus_sys' bundled libopus under CMake ≥ 3.31)
+and `LIBCLANG_PATH` (bindgen); and **`FFMPEG_DIR` must stay unset** — with it,
+`ffmpeg-sys-next` skips pkg-config and the `.pc`'s `-lvpl -ladvapi32 -lole32` never
+reach the linker (LNK1120 with every `MFX*` symbol unresolved). The recipe needs
+`ffmpeg-next ≥ 9.0`: the 8.1 crate does not link `vpl.lib` from the static tree on
+native Windows at all, which is why the WSL route used to be the only proven one.
+Measured on the dev box (RTX 5090 Laptop + Radeon 610M, 2026-09-07): incremental
+build 3 min, `encoder-smoke --codec hevc` → `hevc_nvenc` PASS, the probe advertises the
+same set as the shipped build. `-FfmpegRelease` / `-FfmpegAsset` pin any
 published vendored build, which is also the rollback recipe. The FFmpeg **command
 line** for experiments is a different thing: `winget install Gyan.FFmpeg` (a GPL full
 build, never shipped) gives `ffmpeg -encoders` for a quick look at what a box's
