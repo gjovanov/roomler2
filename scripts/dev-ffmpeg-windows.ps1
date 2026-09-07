@@ -128,24 +128,35 @@ if (-not $ready) {
   Set-Content -Path $vpxPc.FullName -Value $c -Encoding ascii -NoNewline
   Set-Content -Path (Join-Path $Root 'libvpx-pkgconfig.txt') -Value $vpxPc.DirectoryName -Encoding ascii -NoNewline
 
-  # ── 4. pkg-config = vcpkg's pkgconf, renamed (what the workflow does) ───
-  if (-not (Test-Path (Join-Path $binDir 'pkg-config.exe'))) {
-    $pkgconf = Get-ChildItem (Join-Path $Vcpkg 'installed\x64-windows\tools\pkgconf') -Filter 'pkgconf.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $pkgconf) {
-      Write-Step "installing pkgconf via vcpkg ($Vcpkg)"
-      & (Join-Path $Vcpkg 'vcpkg.exe') install pkgconf:x64-windows
-      if ($LASTEXITCODE -ne 0) { throw "vcpkg install pkgconf:x64-windows failed" }
-      $pkgconf = Get-ChildItem (Join-Path $Vcpkg 'installed\x64-windows\tools\pkgconf') -Filter 'pkgconf.exe' | Select-Object -First 1
-    }
-    Copy-Item $pkgconf.FullName (Join-Path $binDir 'pkg-config.exe') -Force
-    Copy-Item $pkgconf.FullName (Join-Path $binDir 'pkgconf.exe') -Force
-  }
-
   Set-Content -Path $stamp -Value (Get-Date -Format o) -Encoding ascii -NoNewline
   Write-Step "staged: $ffRoot (FFmpeg) + $vpxRoot (libvpx) + $binDir\pkg-config.exe"
   if (Test-Path (Join-Path $ffRoot 'ROOMLER-PATCHES.txt')) {
     Write-Step "vendored FFmpeg carries roomler patches:"; Get-Content (Join-Path $ffRoot 'ROOMLER-PATCHES.txt')
   }
+}
+
+# ── 4. pkg-config = vcpkg's pkgconf, renamed (what the workflow does) ───────
+# Runs every time and is idempotent. pkgconf.exe needs its sibling
+# pkgconf-N.dll, so the WHOLE tool dir is copied, and the result is proven by
+# running it: a lone copied exe exits 0xC0000135 (DLL not found), which the
+# cargo build reports only as "pkg-config exited with status code -1073741515".
+$pkgExe = Join-Path $binDir 'pkg-config.exe'
+$works = $false
+if (Test-Path $pkgExe) { & $pkgExe --version *> $null; $works = ($LASTEXITCODE -eq 0) }
+if (-not $works) {
+  if ($Env) { throw "no working pkg-config under $binDir — run without -Env first" }
+  New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+  $toolDir = Join-Path $Vcpkg 'installed\x64-windows\tools\pkgconf'
+  if (-not (Test-Path (Join-Path $toolDir 'pkgconf.exe'))) {
+    Write-Step "installing pkgconf via vcpkg ($Vcpkg)"
+    & (Join-Path $Vcpkg 'vcpkg.exe') install pkgconf:x64-windows
+    if ($LASTEXITCODE -ne 0) { throw "vcpkg install pkgconf:x64-windows failed" }
+  }
+  Get-ChildItem $toolDir -File | ForEach-Object { Copy-Item $_.FullName (Join-Path $binDir $_.Name) -Force }
+  Copy-Item (Join-Path $toolDir 'pkgconf.exe') $pkgExe -Force
+  & $pkgExe --version *> $null
+  if ($LASTEXITCODE -ne 0) { throw "staged pkg-config.exe does not run (exit $LASTEXITCODE) — check the DLLs next to it in $binDir" }
+  Write-Step "pkg-config staged: $pkgExe (pkgconf $(& $pkgExe --version))"
 }
 
 # ── 5. The environment ────────────────────────────────────────────────────
@@ -154,7 +165,13 @@ $lines = @(
   "`$env:FFMPEG_DIR = '$ffRoot'",
   "`$env:PKG_CONFIG_PATH = '$(Join-Path $ffRoot 'lib\pkgconfig');$vpxPkg'",
   "`$env:PKG_CONFIG_ALLOW_SYSTEM_LIBS = '1'",
-  "`$env:PATH = '$binDir;' + `$env:PATH"
+  "`$env:PATH = '$binDir;' + `$env:PATH",
+  # audiopus_sys builds its bundled libopus with CMake, whose CMakeLists says
+  # cmake_minimum_required(< 3.5); CMake 3.31+ refuses that outright. Same
+  # workaround release-agent.yml carries for the `audio` feature.
+  "`$env:CMAKE_POLICY_VERSION_MINIMUM = '3.5'",
+  # ffmpeg-sys-next's bindgen needs libclang; the LLVM installer's default path.
+  "if (-not `$env:LIBCLANG_PATH -and (Test-Path 'C:\Program Files\LLVM\bin')) { `$env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin' }"
 )
 if ($Env) { $lines | ForEach-Object { Write-Output $_ }; exit 0 }
 
