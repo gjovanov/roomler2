@@ -349,8 +349,12 @@ jobs:
             return 0;
           }
           EOC
+          # -rpath-link: ld resolves the avcodec/avutil DT_NEEDED chain (now
+          # the BUNDLED libva, FR-77 P4) from rpath-link dirs, never from -L —
+          # without it the probe link dies on `undefined reference to
+          # vaErrorStr` while the libs themselves are fine (measured).
           gcc /tmp/probe.c -o /tmp/probe \
-            -I/opt/ffout/include -L/opt/ffout/lib -lavcodec -lavutil
+            -I/opt/ffout/include -L/opt/ffout/lib -Wl,-rpath-link,/opt/ffout/lib -lavcodec -lavutil
           LD_LIBRARY_PATH=/opt/ffout/lib /tmp/probe
           # FR-77 P4 — every VAAPI call must go through the BUNDLED libva
           # (the runner has a system copy too, from its preinstalled ffmpeg),
