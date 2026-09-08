@@ -34,8 +34,13 @@ Both halves are satisfied by publication, not by request:
 The written offer in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) stands
 in addition to this, not instead of it.
 
-We apply **no patches to FFmpeg**. The only customisation is the configure flag
-set, which selects components; it is in the build recipe.
+Our customisation is the configure flag set, which selects components, plus the
+source patches in [`.github/ffmpeg-patches/`](../.github/ffmpeg-patches/) (since
+FR-62: one NVENC patch so a bitrate change does not force an IDR). Every shipped
+tree carries a `ROOMLER-PATCHES.txt` manifest (sha256 per patch) that the
+release lane checks against the committed patches, and the corresponding-source
+tarball's `recipe/` applies them the same way — so "the Library as used in that
+binary" is reproducible from what is published.
 
 ---
 
