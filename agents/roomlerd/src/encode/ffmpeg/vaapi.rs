@@ -82,10 +82,10 @@ mod real {
     use std::sync::OnceLock;
 
     /// The process-wide VAAPI device: an `AVBufferRef` to the
-    /// `AVHWDeviceContext`, plus the node it was opened on.
+    /// `AVHWDeviceContext`. The node it was opened on is logged at open;
+    /// nothing reads it afterwards, so it is not kept.
     pub(crate) struct Device {
         buf: *mut ff::AVBufferRef,
-        pub(crate) path: String,
     }
     // SAFETY: the device context is reference-counted and thread-safe to
     // share by FFmpeg's contract (every hwframes ctx takes its own ref); the
@@ -112,10 +112,7 @@ mod real {
                     match open_device(path) {
                         Ok(buf) => {
                             tracing::info!(device = %path, tried = ?cands, "vaapi: device opened");
-                            return Some(Device {
-                                buf,
-                                path: path.clone(),
-                            });
+                            return Some(Device { buf });
                         }
                         Err(e) => tracing::info!(device = %path, %e, "vaapi: device did not open"),
                     }
@@ -244,10 +241,7 @@ pub(crate) use real::{Device, Frames, device};
 mod stub {
     use super::*;
 
-    pub(crate) struct Device {
-        #[allow(dead_code)]
-        pub(crate) path: String,
-    }
+    pub(crate) struct Device;
 
     pub(crate) fn device() -> Option<&'static Device> {
         None
