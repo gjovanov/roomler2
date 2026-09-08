@@ -220,7 +220,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y nasm pkg-config cmake
+          sudo apt-get install -y nasm pkg-config cmake libva-dev
           # nvenc: header-only SDK, versioned; 12.1 supports Blackwell-era
           # drivers while keeping the driver floor reasonable.
           git clone --depth 1 --branch n13.1.15.0 https://github.com/FFmpeg/nv-codec-headers.git /tmp/nvh
@@ -288,13 +288,14 @@ jobs:
           #include <string.h>
           int main(void) {
             const char *want[] = {"h264_nvenc","hevc_nvenc","av1_nvenc","h264_qsv","hevc_qsv",
-                                  "av1_qsv","vp9_qsv","h264_amf","hevc_amf","av1_amf"};
+                                  "av1_qsv","vp9_qsv","h264_amf","hevc_amf","av1_amf",
+                                  "h264_vaapi","hevc_vaapi","av1_vaapi","vp9_vaapi"};
             for (unsigned i = 0; i < sizeof(want)/sizeof(*want); i++) {
               if (!avcodec_find_encoder_by_name(want[i])) { fprintf(stderr, "MISSING encoder %s\n", want[i]); return 1; }
             }
             if (avcodec_find_decoder_by_name("h264")) { fprintf(stderr, "h264 DECODER present — trim did not take\n"); return 1; }
             if (avcodec_find_encoder_by_name("libkvazaar")) { fprintf(stderr, "libkvazaar present — trim did not take\n"); return 1; }
-            printf("probe OK: 10 encoders present, registry trimmed\n");
+            printf("probe OK: 14 encoders present, registry trimmed\n");
             return 0;
           }
           EOC
@@ -330,9 +331,9 @@ jobs:
           # release-agent can prove the vendored libs match the committed
           # patches before it ships them.
           cp /tmp/ROOMLER-PATCHES.txt "$staging/ROOMLER-PATCHES.txt"
-          tar cJf /tmp/ffmpeg-9.0.1-linux64-lgpl-shared-minimal.tar.xz -C /tmp/stage ffmpeg-minimal
-          sha256sum /tmp/ffmpeg-9.0.1-linux64-lgpl-shared-minimal.tar.xz | tee /tmp/min.sha256
-          ls -la /tmp/ffmpeg-9.0.1-linux64-lgpl-shared-minimal.tar.xz
+          tar cJf /tmp/ffmpeg-9.0.1-linux64-lgpl-shared-minimal-vaapi.tar.xz -C /tmp/stage ffmpeg-minimal
+          sha256sum /tmp/ffmpeg-9.0.1-linux64-lgpl-shared-minimal-vaapi.tar.xz | tee /tmp/min.sha256
+          ls -la /tmp/ffmpeg-9.0.1-linux64-lgpl-shared-minimal-vaapi.tar.xz
           gh release upload vendored-ffmpeg-9.0.1 \
-            /tmp/ffmpeg-9.0.1-linux64-lgpl-shared-minimal.tar.xz \
+            /tmp/ffmpeg-9.0.1-linux64-lgpl-shared-minimal-vaapi.tar.xz \
             --repo "${{ github.repository }}" --clobber

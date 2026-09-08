@@ -295,6 +295,7 @@ jobs:
             libxcb1-dev libxcb-shm0-dev libxcb-randr0-dev \
             cmake libclang-dev pkg-config \
             libvpx-dev \
+            libva-dev \
             libasound2-dev
 
       - name: Install Rust toolchain
@@ -340,16 +341,16 @@ jobs:
           # FFmpeg 6.1, but `ffmpeg-next = 9.0` needs 9.x.
           gh release download vendored-ffmpeg-9.0.1 \
             --repo "${{ github.repository }}" \
-            --pattern 'ffmpeg-9.0.1-linux64-lgpl-shared-minimal.tar.xz' \
+            --pattern 'ffmpeg-9.0.1-linux64-lgpl-shared-minimal-vaapi.tar.xz' \
             --dir /tmp/ffdl
           # P3e lever B (Linux twin): the MINIMAL from-source build — the ten
           # HW encoders + their parsers, nothing else (whole lib dir 2.5 MB
           # vs ~50 MB of libav* in the old BtbN re-upload; the agent's
           # cascade is locked to nvenc/qsv/amf by a unit test, so kvazaar/
           # vaapi/every-decoder were unreachable). Vendor job's runtime probe
-          # asserts the encoder set; rollback = drop the `-minimal` suffix.
+          # asserts the encoder set; rollback = drop the `-minimal` suffix; FR-77 P4 added `-vaapi` (the tree needs libva.so.2 — `Depends: libva2, libva-drm2`), rollback = drop that suffix.
           sudo mkdir -p /opt/roomler-ffmpeg
-          sudo tar xf /tmp/ffdl/ffmpeg-9.0.1-linux64-lgpl-shared-minimal.tar.xz \
+          sudo tar xf /tmp/ffdl/ffmpeg-9.0.1-linux64-lgpl-shared-minimal-vaapi.tar.xz \
             -C /opt/roomler-ffmpeg --strip-components=1
           # BtbN's pkgconfig files hardcode the build-machine prefix; rewrite
           # it to our extract path so pkg-config emits correct -L/-I flags.
@@ -521,7 +522,7 @@ jobs:
           set -euo pipefail
           docker run --rm -v "$PWD:/w" ubuntu:24.04 bash -euc '
             apt-get update -qq
-            apt-get install -y -qq libxcb1 libxcb-shm0 libxcb-randr0 libasound2t64 >/dev/null
+            apt-get install -y -qq libxcb1 libxcb-shm0 libxcb-randr0 libasound2t64 libva2 libva-drm2 >/dev/null
             LD_LIBRARY_PATH=/w/agents/roomlerd/vendor-ffmpeg /w/target/release/roomlerd --version'
 
       - name: Build .deb

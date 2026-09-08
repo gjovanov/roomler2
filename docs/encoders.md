@@ -305,6 +305,37 @@ service host its stderr reaches no log; the parent's verdict quotes the last
 one, which is the entry to add to `encoder_cells_deny`. `vp9_qsv:yuv444` is on
 the built-in denylist since that day; `probe_ms` is both children's cost.
 
+### VAAPI on Linux (FR-77 P4)
+
+```mermaid
+flowchart LR
+    subgraph once["once per process — vaapi::device()"]
+        P[vaapi_device pinned?] -- yes --> O
+        P -- no --> N["/dev/dri/renderD128 … 135<br/>then /dev/dxg (WSL2)"] --> O[av_hwdevice_ctx_create VAAPI<br/>first node libva accepts]
+    end
+    subgraph enc["per encoder open — build_encoder"]
+        F["vaapi::Frames — av_hwframe_ctx_alloc<br/>sw_format NV12 (4:2:0) or VUYX (4:4:4), pool 20"] --> C[codec context: format VAAPI,<br/>hw_frames_ctx = a ref to the pool]
+    end
+    subgraph frame["per frame — encode_sync"]
+        S[software frame: dcv BGRA→NV12/VUYX] --> U[av_hwframe_get_buffer + transfer_data<br/>+ copy_props (pts, forced I)] --> E[send_frame]
+    end
+    O --> F
+```
+
+| Piece | Where | Note |
+|---|---|---|
+| FFmpeg | the Linux vendor asset `…-minimal-vaapi.tar.xz` | `--enable-vaapi` + `h264/hevc/av1/vp9_vaapi` (14 encoders verified); a new asset NAME because the tree needs `libva.so.2` |
+| libva | the system's (`Depends: libva2, libva-drm2`; `Recommends: mesa-va-drivers, intel-media-va-driver`) | the VA driver a host runs is its distribution's and matches its kernel; never bundled |
+| the device | `vaapi::device()` — a `OnceLock` | pinned `vaapi_device` → render nodes in order → `/dev/dxg`; every encoder, probe and rebuild in the process uses the same node |
+| options | `rc_mode=VBR` on `b:v` = the cap, HRD window, `profile=rext` for HEVC 4:4:4, `async_depth=1` (tier-protected) | no `qp`/`quality` on top of the driver's VBR; a forced I picture is an IDR in `vaapi_encode` |
+| cells | `*_vaapi` after the vendor names, `hw: true` by construction | `hevc_vaapi:yuv444` and `vp9_vaapi:yuv444` on the built-in denylist until a driver proves the packed 4:4:4 open |
+
+**WSL2 is a VAAPI host without a render node.** Mesa's `d3d12_drv_video.so`
+answers on `/dev/dxg`, which is why the candidate walk ends there; the
+kernel-side `/dev/dri` never appears in a WSL2 distro. The same box's
+`/usr/lib/wsl/lib/libnvidia-encode.so.1` is the rc.433 stub class (dlopens,
+then faults) — the two-child probe keeps that from costing the VAAPI cells.
+
 ## Capture backends
 
 Cascade (first that works wins): synthetic (CI, env-gated) → **SystemContext**

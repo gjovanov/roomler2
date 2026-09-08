@@ -335,6 +335,44 @@ flowchart LR
   alone, 200 with `MANAGE_AGENTS` → restart → `applied` + `needs_restart:
   ["encoder_cells_deny"]` → restart → 6 cells back in 3032 ms, `applied` / `noop`).
 
+### P4 — as built (#PR4): VAAPI on Linux x86_64
+
+- **The vendor build gains VAAPI**: the Linux job of `vendor-ffmpeg-windows.yml`
+  installs `libva-dev`, configures `--enable-vaapi` with the four `*_vaapi` encoders
+  on top of the ten vendor ones, verifies fourteen names in its runtime probe, and
+  publishes the tree as **`ffmpeg-9.0.1-linux64-lgpl-shared-minimal-vaapi.tar.xz`** on the
+  same `vendored-ffmpeg-9.0.1` release — a new asset name, because the tree now needs
+  `libva.so.2` at load time and a build without P4's `Depends` would fail the stock-24.04
+  check the moment it picked the new libs up. Rollback = drop the `-vaapi` suffix in
+  `release-agent.yml`'s download pattern.
+- **libva stays the system's** (`Depends: libva2, libva-drm2`; `Recommends: mesa-va-drivers,
+  intel-media-va-driver`), so the VA driver a host runs is the distribution's and matches
+  its kernel — the spec's choice over bundling. The `.deb`'s ldd-fixpoint bundler copies
+  only the vendored tree, so libva is never carried; the stock-24.04 load check installs
+  the two packages exactly as a fresh host would.
+- **The pump owns the hardware contexts** (`encode/ffmpeg/vaapi.rs`): ffmpeg-next 9 wraps
+  none of `av_hwdevice_ctx_create` / `av_hwframe_ctx_*` / `av_hwframe_transfer_data`, so
+  the raw `ffmpeg_sys_next` calls live in one file. The device opens ONCE per process
+  (`vaapi::device()`, a `OnceLock`) on the first candidate libva accepts — the pinned
+  `vaapi_device` config key, then `/dev/dri/renderD128`…`135` that exist, then `/dev/dxg`
+  (WSL2 has no DRM render node; Mesa's D3D12 driver answers on that device). Every
+  encoder gets its own frame pool (`vaapi::Frames`, `sw_format` NV12 or packed VUYX for
+  4:4:4, pool 20) whose ref is handed to the codec context before `open`; each software
+  frame the pump built is uploaded (`av_hwframe_get_buffer` + `av_hwframe_transfer_data`
+  + `av_frame_copy_props`, so the pts and the forced-I type ride along) and the hardware
+  frame is what `send_frame` gets. `build_encoder` returns the pool with the encoder;
+  a rebuild carries it; a swap replaces it.
+- **The names close every cascade** (`*_vaapi` after the vendor names, so an Intel box with
+  both QSV and iHD keeps its vendor path first), VAAPI is hardware by construction
+  (`hw: true`), and the cells stay probe-proven: `hevc_vaapi:yuv444` was on the denylist
+  from P1, **`vp9_vaapi:yuv444` joins it** — the VUYX form on VAAPI is as unproven as it was
+  on QSV, and CORPLAP-3 showed what an unproven packed-4:4:4 open can do to a runtime.
+- **Options**: `rc_mode=VBR` anchored on `b:v` = the cap with the HRD window (no `qp` /
+  `quality` on top — the driver's VBR owns quality, the governor the ceiling), `profile=rext`
+  for HEVC 4:4:4, `async_depth=1` in the tier-protected group. Forced keyframes need no
+  twin of `forced-idr`: `vaapi_encode` turns a forced I picture into an IDR.
+- **arm64 stays without FFmpeg**, unchanged.
+
 ## Phases
 
 | # | Phase | Kill switch | Status |
@@ -343,7 +381,7 @@ flowchart LR
 | P1 | `video_cells` + the matrix probe + verified `hw` + probe duration in the hello; server passthrough | legacy fields stay filled; a viewer ignoring the field sees today | **shipped** #1480 → `agent-v0.4.83`, **field-verified 2026-09-07** — result on [#1470](https://github.com/gjovanov/roomler-ai/issues/1470) |
 | P2 | Picker: codec × chroma dropdowns, i18n, Auto rules, remembered trial failures, the shared derivation | ships with P1 | **shipped** with P1 (viewer `hosted-20260907-602396d`), **field-verified 2026-09-07** |
 | P3 | **P3a** the probe cache · the `ProbeReport` envelope (the lost vp9_qsv IDR verdict) · `encoder_cells_deny` config key + remote-config push · the chroma column · `cells.rs`; **P3b** the cells: VP9 4:4:4 hardware (QSV/VAAPI profile 1, VUYX), H.264 4:4:4 (NVENC + software decode), HEVC 4:4:4 on QSV/VAAPI behind the denylist | the cell denylist; `caps_cache = false` | **P3a + P3b shipped** `agent-v0.4.84` #1488 #1489 — the cache and the push **field-verified 2026-09-08**; the roll found the one-child cost on CORPLAP-3 (a faulting `vp9_qsv` 4:4:4 open took the whole matrix) ⇒ **P3c** #1491: the two-child probe, `vp9_qsv:yuv444` default-denied; the cell field tests (H.264 4:4:4 on the dev box, VP9 and HEVC 4:4:4 on QSV) follow 0.4.85 |
-| P4 | VAAPI on Linux x86_64 | `ROOMLERD_USE_FFMPEG=0` / the denylist | — |
+| P4 | VAAPI on Linux x86_64 | `ROOMLERD_USE_FFMPEG=0` / the denylist / `vaapi_device` | **built** #PR4 — the WSL proof (Mesa D3D12 on `/dev/dxg`) pending; bare-metal Intel and AMD recorded as pending |
 | P5 | `docs/encoders.md` rewritten with diagrams (the cell resolution, the probe lifecycle); stale "macOS ships no FFmpeg" lines corrected in `CLAUDE.md`, `THIRD-PARTY-NOTICES.md`, `docs/lgpl-relink.md`; `docs/README.md` row | — | — |
 | next | FR for D3D12 video encode (Windows) + Vulkan video encode (Linux/Windows) | — | — |
 

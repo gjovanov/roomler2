@@ -697,7 +697,10 @@ peer-to-peer; the server never sees raw pixels or keystrokes."""
 # .so.7, not .so.9) and `libc6 (>= 2.39)` wrongly blocked 22.04 (binary is glibc
 # 2.34). `libasound2` backs the Opus system-audio capture track; libxcb* are the
 # always-present X11 client libs.
-depends = "libc6, libxcb1, libxcb-shm0, libxcb-randr0, libasound2"
+# FR-77 P4 — libva is the SYSTEM's: the VA driver a host runs must match its
+# kernel and distribution, so it is never bundled (unlike the vendored libav*).
+depends = "libc6, libxcb1, libxcb-shm0, libxcb-randr0, libasound2, libva2, libva-drm2"
+recommends = "mesa-va-drivers, intel-media-va-driver"
 section = "net"
 priority = "optional"
 # One script, `postinst`, and all it does is `systemctl daemon-reload`.
