@@ -141,6 +141,9 @@ mod tests {
     #[test]
     fn denylist_default_env_override_empty_and_none() {
         use tunnel_core::env::test_env::Saved;
+        let _guard = crate::encode::DENY_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _saved = Saved::cleared("ENCODER_CELLS_DENY");
 
         let deny = denied_cells();
@@ -193,6 +196,9 @@ mod tests {
     #[test]
     fn names_444_follow_the_cascade_minus_the_denylist() {
         use tunnel_core::env::test_env::Saved;
+        let _guard = crate::encode::DENY_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _saved = Saved::cleared("ENCODER_CELLS_DENY");
         assert_eq!(
             names_444(VideoCodec::Hevc),

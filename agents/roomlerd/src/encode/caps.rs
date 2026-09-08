@@ -1970,6 +1970,9 @@ mod tests {
     #[test]
     fn candidates_444_are_the_hardware_cells_the_matrix_allows_minus_the_denylist() {
         use tunnel_core::env::test_env::Saved;
+        let _guard = crate::encode::DENY_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _saved = Saved::cleared("ENCODER_CELLS_DENY");
         let caps = AgentCaps {
             video_cells: vec![
