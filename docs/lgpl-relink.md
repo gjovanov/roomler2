@@ -105,10 +105,12 @@ cargo build -p roomlerd --release \
 
 The result is `target/release/roomlerd(.exe)`, linked against **your** FFmpeg.
 
-⚠️ Use the feature list for the platform you are reproducing — they differ, and
-`ffmpeg-encoder` is deliberately **absent** on macOS (that build ships no FFmpeg
-at all). The authoritative lists are the `cargo build` lines in
-`.github/workflows/release-agent.yml`.
+⚠️ Use the feature list for the platform you are reproducing — they differ. macOS
+ships FFmpeg again since 2026-08-25 (a `--disable-everything` tree with only the
+three `*_videotoolbox` encoders, as shared dylibs built with `--disable-autodetect`
+so nothing Homebrew is baked in), and Linux x86_64's tree carries libva + libdrm
+built into it since FR-77 P4. The authoritative lists are the `cargo build` lines
+in `.github/workflows/release-agent.yml`.
 
 ⚠️ Windows also needs libvpx for the VP9-4:4:4 path; the workflow vendors it the
 same way (`vendor-libvpx-windows.yml`) and appends it to `PKG_CONFIG_PATH`. If
