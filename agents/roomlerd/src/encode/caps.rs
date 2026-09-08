@@ -986,7 +986,7 @@ fn compute_caps(run_hw_probes: bool, attempt_444: bool) -> AgentCaps {
                     tracing::info!(
                         %e,
                         elapsed_ms = start_vp9.elapsed().as_millis(),
-                        "caps probe: ffmpeg vp9_qsv not available (NVIDIA/AMD host, Intel without QSV, or Intel driver issue) — VP9 sessions stay on libvpx SW"
+                        "caps probe: no ffmpeg VP9 hardware encoder opened (vp9_qsv, vp9_vaapi: NVIDIA host, Intel without QSV, no VAAPI device, or a driver issue) — VP9 sessions stay on libvpx SW"
                     );
                 }
             }
