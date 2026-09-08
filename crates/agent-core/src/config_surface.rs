@@ -803,12 +803,12 @@ const KEYS: &[(&str, &str, &str)] = &[
     (
         "encoder_cells_deny",
         "string",
-        "FR-77 - encoder cells this device must not open or advertise: comma-separated name:chroma entries (e.g. hevc_qsv:yuv444). Empty = the built-in list (hevc_qsv:yuv444, hevc_vaapi:yuv444); `none` = deny nothing. Env: ROOMLERD_ENCODER_CELLS_DENY. Pushable through remote config. Restart required.",
+        "FR-77 - encoder cells this device must not open or advertise: comma-separated name:chroma entries (e.g. hevc_qsv:yuv444). Empty = the built-in list (hevc_qsv:yuv444, hevc_vaapi:yuv444, vp9_qsv:yuv444, vp9_vaapi:yuv444); `none` = deny nothing. Env: ROOMLERD_ENCODER_CELLS_DENY. Pushable through remote config. Restart required.",
     ),
     (
         "vaapi_device",
         "string",
-        "FR-77 P4 - pin the VAAPI render node the Linux daemon opens (e.g. /dev/dri/renderD129, or /dev/dxg on WSL2). Empty = the first node libva accepts, /dev/dri/renderD128..135 then /dev/dxg. Env: ROOMLERD_VAAPI_DEVICE. Restart required.",
+        "FR-77 P4 - pin the VAAPI render node the Linux daemon opens (e.g. /dev/dri/renderD129). Empty = the first node libva accepts, /dev/dri/renderD128..135 in order. Env: ROOMLERD_VAAPI_DEVICE. Restart required.",
     ),
     (
         "forward_acl",

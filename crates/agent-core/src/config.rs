@@ -1138,8 +1138,8 @@ pub struct AgentConfig {
     pub encoder_cells_deny: Option<String>,
     /// FR-77 P4 — pin the VAAPI render node (`ROOMLERD_VAAPI_DEVICE`,
     /// e.g. `/dev/dri/renderD129`). Unset = the first node libva opens, in
-    /// order `/dev/dri/renderD128`…`renderD135` then `/dev/dxg` (WSL2's
-    /// Mesa D3D12 path). Read once per process at the first VAAPI open.
+    /// order `/dev/dri/renderD128`…`renderD135`. Read once per process at
+    /// the first VAAPI open.
     #[serde(default)]
     pub vaapi_device: Option<String>,
     /// B2 — score-driven demotion of degraded-but-live direct carriers

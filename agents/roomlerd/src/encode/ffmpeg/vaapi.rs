@@ -17,9 +17,18 @@
 //! which is also what makes the caps probe's answer describe the session's
 //! device. Candidates, in order: the pinned `vaapi_device` config key
 //! (`ROOMLERD_VAAPI_DEVICE`), then `/dev/dri/renderD128`…`renderD135` that
-//! exist, then `/dev/dxg` — WSL2 has no DRM render node at all and reaches
-//! VAAPI through Mesa's D3D12 driver on that device. The first node libva
-//! can open wins; a host with none has no VAAPI cells and says so once.
+//! exist. The first node libva can open wins; a host with none has no
+//! VAAPI cells and says so once.
+//!
+//! `/dev/dxg` (WSL2's GPU device) is deliberately NOT a candidate, measured
+//! 2026-09-08: a WSL2 distro has no `/dev/dri` at all, `/dev/dxg` is a
+//! misc-major node (10:125), and libva's DRM display refuses anything that
+//! is not a DRM-major character device with nothing but an `fstat` —
+//! `vainfo --display drm --device /dev/dxg` says "Failed to a DRM display
+//! for the given device" even with `LIBVA_DRIVER_NAME=d3d12` and Mesa's
+//! `d3d12_drv_video.so` installed. That driver is reachable only through a
+//! Wayland/X11 display, which a root daemon on a headless host has no
+//! business depending on. WSL is the negative cell; NVENC still works there.
 
 use anyhow::{Result, anyhow};
 use ffmpeg_next::frame;
@@ -28,20 +37,19 @@ use ffmpeg_next::sys as ff;
 /// The render-node candidates, in order. `pinned` is the config key's
 /// value; `exists` answers for a path so the order is testable without a
 /// `/dev`.
+// Read by the Linux device opener only; every other platform has the stub.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) fn candidates(pinned: Option<&str>, exists: &dyn Fn(&str) -> bool) -> Vec<String> {
     if let Some(p) = pinned.map(str::trim).filter(|p| !p.is_empty()) {
         return vec![p.to_string()];
     }
-    let mut out: Vec<String> = (128..=135)
+    (128..=135)
         .map(|n| format!("/dev/dri/renderD{n}"))
         .filter(|p| exists(p))
-        .collect();
-    if exists("/dev/dxg") {
-        out.push("/dev/dxg".to_string());
-    }
-    out
+        .collect()
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) fn pinned_device() -> Option<String> {
     tunnel_core::env::node_env("VAAPI_DEVICE").filter(|v| !v.trim().is_empty())
 }
@@ -61,7 +69,7 @@ fn ff_err(rc: i32) -> String {
     let mut buf = [0u8; 128];
     // SAFETY: fixed-size buffer, FFmpeg NUL-terminates within it.
     unsafe {
-        ff::av_strerror(rc, buf.as_mut_ptr() as *mut libc::c_char, buf.len());
+        ff::av_strerror(rc, buf.as_mut_ptr() as *mut std::os::raw::c_char, buf.len());
     }
     let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
     format!("{} ({})", String::from_utf8_lossy(&buf[..end]), rc)
@@ -96,7 +104,7 @@ mod real {
                 let cands = candidates(pinned_device().as_deref(), &exists);
                 if cands.is_empty() {
                     tracing::info!(
-                        "vaapi: no render node on this host (no /dev/dri/renderD* and no /dev/dxg) — no VAAPI cells"
+                        "vaapi: no render node on this host (no /dev/dri/renderD*) — no VAAPI cells"
                     );
                     return None;
                 }
@@ -226,6 +234,7 @@ mod real {
 }
 
 #[cfg(target_os = "linux")]
+#[allow(unused_imports)]
 pub(crate) use real::{Device, Frames, device};
 
 /// Every other platform: no device, so no `*_vaapi` open ever gets past the
@@ -247,12 +256,7 @@ mod stub {
     pub(crate) struct Frames;
 
     impl Frames {
-        pub(crate) fn new(
-            _dev: &Device,
-            _sw: ff::AVPixelFormat,
-            _w: u32,
-            _h: u32,
-        ) -> Result<Self> {
+        pub(crate) fn new(_dev: &Device, _sw: ff::AVPixelFormat, _w: u32, _h: u32) -> Result<Self> {
             Err(anyhow!("VAAPI is Linux-only"))
         }
         pub(crate) fn new_ref(&self) -> *mut ff::AVBufferRef {
@@ -265,16 +269,18 @@ mod stub {
 }
 
 #[cfg(not(target_os = "linux"))]
+#[allow(unused_imports)]
 pub(crate) use stub::{Device, Frames, device};
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The pin wins outright; otherwise the render nodes in numeric order,
-    /// then WSL2's `/dev/dxg` last — and only the ones that exist.
+    /// The pin wins outright; otherwise the render nodes in numeric order —
+    /// only the ones that exist, and never `/dev/dxg` (WSL2: libva refuses
+    /// it, see the module doc).
     #[test]
-    fn candidates_pin_then_render_nodes_then_dxg() {
+    fn candidates_pin_then_render_nodes_never_dxg() {
         let all = |_: &str| true;
         assert_eq!(
             candidates(Some(" /dev/dri/renderD129 "), &all),
@@ -286,12 +292,15 @@ mod tests {
             "a blank pin is no pin"
         );
         let v = candidates(None, &all);
-        assert_eq!(v.len(), 9);
+        assert_eq!(v.len(), 8);
         assert_eq!(v[0], "/dev/dri/renderD128");
         assert_eq!(v[7], "/dev/dri/renderD135");
-        assert_eq!(v[8], "/dev/dxg");
+        assert!(!v.iter().any(|p| p.contains("dxg")));
         let wsl = |p: &str| p == "/dev/dxg";
-        assert_eq!(candidates(None, &wsl), vec!["/dev/dxg"]);
+        assert!(
+            candidates(None, &wsl).is_empty(),
+            "a WSL2 box (dxg only) has no candidate — the opener says so once"
+        );
         let none = |_: &str| false;
         assert!(candidates(None, &none).is_empty());
     }

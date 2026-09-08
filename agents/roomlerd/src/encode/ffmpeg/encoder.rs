@@ -1378,8 +1378,8 @@ impl FfmpegEncoder {
         // pump produces (NV12, or packed VUYX for 4:4:4). No device on this
         // host = this name fails in one line and the cascade moves on.
         let vaapi_frames = if is_vaapi(name) {
-            let dev = vaapi::device()
-                .ok_or_else(|| anyhow!("{name}: no VAAPI device on this host"))?;
+            let dev =
+                vaapi::device().ok_or_else(|| anyhow!("{name}: no VAAPI device on this host"))?;
             Some(vaapi::Frames::new(
                 dev,
                 vaapi::sw_format(chroma444),
@@ -1498,7 +1498,7 @@ impl FfmpegEncoder {
                 .join(" ");
             let enc = configure()?;
             match enc.open_as_with(codec, dict_from_pairs(&base)) {
-                Ok((encoder, vaapi)) => {
+                Ok(encoder) => {
                     tracing::info!(
                         encoder = name,
                         options = base_summary,
@@ -2193,8 +2193,9 @@ impl VideoEncoder for FfmpegEncoder {
                     self.chroma444,
                     self.constrained,
                 ) {
-                    Ok(enc) => {
+                    Ok((enc, vaapi)) => {
                         self.encoder = enc;
+                        self.vaapi = vaapi;
                         self.maxrate_bps = target;
                         self.frame_count = 0;
                         self.force_keyframe = true;
@@ -2262,7 +2263,8 @@ fn chroma444_pixel(name: &str) -> format::Pixel {
 fn packed444_name(name: &str) -> bool {
     name.contains("qsv") || name.contains("vaapi")
 }
-n/// FR-77 P4 — the backends that take hardware frames from a VAAPI pool.
+
+/// FR-77 P4 — the backends that take hardware frames from a VAAPI pool.
 fn is_vaapi(name: &str) -> bool {
     name.ends_with("_vaapi")
 }
@@ -2416,30 +2418,48 @@ mod tests {
     /// Verify the dispatch order matches RustDesk's pattern + our docs.
     /// Locks the order so a refactor doesn't accidentally reorder.
     #[test]
-    fn av1_dispatch_order_is_nvenc_qsv_amf_videotoolbox() {
+    fn av1_dispatch_order_is_nvenc_qsv_amf_videotoolbox_vaapi() {
         // rc.190 — same vendor order as HEVC (NVIDIA → Intel → AMD), with
         // Apple last. The videotoolbox entry is expected to FAIL to open on
         // current Macs (no AV1 encode silicon announced); it is present so
         // the caps probe answers the question instead of a code comment.
         assert_eq!(
             AV1_ENCODER_NAMES,
-            &["av1_nvenc", "av1_qsv", "av1_amf", "av1_videotoolbox"]
+            &[
+                "av1_nvenc",
+                "av1_qsv",
+                "av1_amf",
+                "av1_videotoolbox",
+                "av1_vaapi"
+            ]
         );
     }
 
     #[test]
-    fn hevc_dispatch_order_is_nvenc_qsv_amf_videotoolbox() {
+    fn hevc_dispatch_order_is_nvenc_qsv_amf_videotoolbox_vaapi() {
         assert_eq!(
             HEVC_ENCODER_NAMES,
-            &["hevc_nvenc", "hevc_qsv", "hevc_amf", "hevc_videotoolbox"]
+            &[
+                "hevc_nvenc",
+                "hevc_qsv",
+                "hevc_amf",
+                "hevc_videotoolbox",
+                "hevc_vaapi"
+            ]
         );
     }
 
     #[test]
-    fn h264_dispatch_order_is_nvenc_qsv_amf_videotoolbox() {
+    fn h264_dispatch_order_is_nvenc_qsv_amf_videotoolbox_vaapi() {
         assert_eq!(
             H264_ENCODER_NAMES,
-            &["h264_nvenc", "h264_qsv", "h264_amf", "h264_videotoolbox"]
+            &[
+                "h264_nvenc",
+                "h264_qsv",
+                "h264_amf",
+                "h264_videotoolbox",
+                "h264_vaapi"
+            ]
         );
     }
 
@@ -2447,7 +2467,7 @@ mod tests {
     /// fleet must keep resolving to exactly the encoder it resolved to
     /// before, so `*_videotoolbox` may only ever be LAST.
     #[test]
-    fn videotoolbox_is_appended_never_prepended() {
+    fn videotoolbox_and_vaapi_are_appended_never_prepended() {
         for names in [HEVC_ENCODER_NAMES, H264_ENCODER_NAMES, AV1_ENCODER_NAMES] {
             let vt = names
                 .iter()
@@ -2455,9 +2475,14 @@ mod tests {
                 .expect("every table should offer a videotoolbox rung");
             assert_eq!(
                 vt,
-                names.len() - 1,
-                "videotoolbox must be last in {names:?} — prepending it would \
+                names.len() - 2,
+                "videotoolbox must sit right before vaapi in {names:?} — prepending it would \
                  change dispatch for every non-Apple host in the fleet"
+            );
+            // FR-77 P4 — vaapi closes every table, after the vendor names.
+            assert!(
+                names.last().is_some_and(|l| l.ends_with("_vaapi")),
+                "{names:?}"
             );
         }
     }
@@ -2696,10 +2721,19 @@ mod tests {
         assert!(s.contains("rc_mode=VBR"), "{s}");
         assert!(s.contains("maxrate=3000000"), "{s}");
         assert!(s.contains("profile=rext"), "{s}");
-        assert!(lowlat.iter().any(|(k, v)| k == "async_depth" && v == "1"), "{lowlat:?}");
-        assert!(!base.iter().any(|(k, _)| k == "qp" || k == "quality"), "{base:?}");
+        assert!(
+            lowlat.iter().any(|(k, v)| k == "async_depth" && v == "1"),
+            "{lowlat:?}"
+        );
+        assert!(
+            !base.iter().any(|(k, _)| k == "qp" || k == "quality"),
+            "{base:?}"
+        );
         let (_, _, s) = encoder_options("vp9_vaapi", 3_000_000, 22, true, true, false);
-        assert!(!s.contains("profile"), "vp9_vaapi has no profile option, got: {s}");
+        assert!(
+            !s.contains("profile"),
+            "vp9_vaapi has no profile option, got: {s}"
+        );
         let (_, _, s) = encoder_options("h264_vaapi", 3_000_000, 22, true, false, false);
         assert!(s.contains("rc_mode=VBR") && !s.contains("profile"), "{s}");
     }
