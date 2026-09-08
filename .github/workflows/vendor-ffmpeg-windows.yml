@@ -25,7 +25,13 @@ name: Vendor FFmpeg (Windows x64 MSVC static-md, LGPL)
 # Re-run when bumping the FFmpeg version / vcpkg baseline / encoder list.
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: "which trees to rebuild (each job re-uploads its asset with --clobber)"
+        type: choice
+        default: all
+        options: [all, windows, linux]
 
 permissions:
   contents: write
@@ -33,6 +39,7 @@ permissions:
 jobs:
   build:
     name: vcpkg overlay-port FFmpeg (minimal, encoders-only) + upload
+    if: ${{ inputs.jobs == 'all' || inputs.jobs == 'windows' || inputs.jobs == '' }}
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -210,6 +217,7 @@ jobs:
   # ────────────────────────────────────────────────────────────────────────
   build-linux-minimal:
     name: from-source minimal FFmpeg (linux64 shared, LGPL) + upload
+    if: ${{ inputs.jobs == 'all' || inputs.jobs == 'linux' || inputs.jobs == '' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
@@ -221,9 +229,11 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y nasm pkg-config cmake ninja-build python3-pip
-          # meson from pip: libdrm/libva want a newer floor than 22.04's apt.
-          python3 -m pip install -q --user meson
-          export PATH="$HOME/.local/bin:$PATH"
+          # meson from pip, SYSTEM-wide: libdrm/libva want a newer floor than
+          # 22.04's apt, and `sudo ninja install` re-runs meson as root — a
+          # `--user` install is invisible there (measured: the first run died
+          # in `meson install` with "No module named 'mesonbuild'").
+          sudo python3 -m pip install -q meson
           # nvenc: header-only SDK, versioned; 12.1 supports Blackwell-era
           # drivers while keeping the driver floor reasonable.
           git clone --depth 1 --branch n13.1.15.0 https://github.com/FFmpeg/nv-codec-headers.git /tmp/nvh
