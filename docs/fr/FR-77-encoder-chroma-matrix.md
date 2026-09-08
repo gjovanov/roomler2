@@ -399,7 +399,7 @@ flowchart LR
   twin of `forced-idr`: `vaapi_encode` turns a forced I picture into an IDR.
 - **arm64 stays without FFmpeg**, unchanged.
 
-### P4b — as built (#PR4B): what the first roll found on jupiter
+### P4b — as built (#1498): what the first roll found on jupiter
 
 - **`FfmpegEncoder::drop` no longer flushes an encoder that never took a frame.** On
   0.4.86 the probe child opened `hevc_vaapi` on jupiter and died with SIGSEGV on every
@@ -426,7 +426,7 @@ flowchart LR
 | P1 | `video_cells` + the matrix probe + verified `hw` + probe duration in the hello; server passthrough | legacy fields stay filled; a viewer ignoring the field sees today | **shipped** #1480 → `agent-v0.4.83`, **field-verified 2026-09-07** — result on [#1470](https://github.com/gjovanov/roomler-ai/issues/1470) |
 | P2 | Picker: codec × chroma dropdowns, i18n, Auto rules, remembered trial failures, the shared derivation | ships with P1 | **shipped** with P1 (viewer `hosted-20260907-602396d`), **field-verified 2026-09-07** |
 | P3 | **P3a** the probe cache · the `ProbeReport` envelope (the lost vp9_qsv IDR verdict) · `encoder_cells_deny` config key + remote-config push · the chroma column · `cells.rs`; **P3b** the cells: VP9 4:4:4 hardware (QSV/VAAPI profile 1, VUYX), H.264 4:4:4 (NVENC + software decode), HEVC 4:4:4 on QSV/VAAPI behind the denylist | the cell denylist; `caps_cache = false` | **P3a + P3b shipped** `agent-v0.4.84` #1488 #1489 — the cache and the push **field-verified 2026-09-08**; the roll found the one-child cost on CORPLAP-3 (a faulting `vp9_qsv` 4:4:4 open took the whole matrix) ⇒ **P3c** #1491: the two-child probe, `vp9_qsv:yuv444` default-denied; the cell field tests (H.264 4:4:4 on the dev box, VP9 and HEVC 4:4:4 on QSV) follow 0.4.85 |
-| P4 | VAAPI on Linux x86_64 | `ROOMLERD_USE_FFMPEG=0` / the denylist / `vaapi_device` | **shipped** #1494 (+ #1495) → `agent-v0.4.86`: WSL and mars measured as the NEGATIVE cells; jupiter's `encoder-smoke` proved the pump (real HEVC bytes through `radeonsi`) but the PROBE died on drop ⇒ **P4b** #PR4B (`agent-v0.4.87`): the unfed-encoder flush removed, the denylist gating 4:2:0 too; the positive cell on jupiter/zeus follows that roll; Intel (iHD) has no fleet host yet |
+| P4 | VAAPI on Linux x86_64 | `ROOMLERD_USE_FFMPEG=0` / the denylist / `vaapi_device` | **shipped** #1494 (+ #1495) → `agent-v0.4.86`: WSL and mars measured as the NEGATIVE cells; jupiter's `encoder-smoke` proved the pump (real HEVC bytes through `radeonsi`) but the PROBE died on drop ⇒ **P4b** #1498 (`agent-v0.4.87`): the unfed-encoder flush removed, the denylist gating 4:2:0 too; the positive cell on jupiter/zeus follows that roll; Intel (iHD) has no fleet host yet |
 | P5 | `docs/encoders.md` rewritten with diagrams (the cell resolution, the probe lifecycle); stale "macOS ships no FFmpeg" lines corrected in `CLAUDE.md`, `THIRD-PARTY-NOTICES.md`, `docs/lgpl-relink.md`; `docs/README.md` row | — | — |
 | next | FR for D3D12 video encode (Windows) + Vulkan video encode (Linux/Windows) | — | — |
 
